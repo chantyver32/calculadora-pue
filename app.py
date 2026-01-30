@@ -48,7 +48,6 @@ opcion = st.selectbox("Selecciona el artículo:", opciones)
 peso_kg = st.number_input(
     "Ingresa el peso total:", 
     min_value=0.0, 
-    step=0.001, 
     format="%.3f", 
     value=None,  # Esto hace que el campo aparezca vacío al inicio
     placeholder="0.000" # Muestra esto como guía
