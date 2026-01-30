@@ -106,8 +106,8 @@ with col2:
 
 # 4. Lógica de cálculo
 if calcular:
-    if opcion == "--- SELECCIONA UN ARTÍCULO ---":
-        st.warning("⚠️ Por favor, selecciona un artículo de la lista antes de calcular.")
+    if opcion == "":
+        st.warning("⚠️ Por favor, selecciona el artículo.")
     elif peso_kg is None:
         st.warning("⚠️ Por favor, ingresa el peso.")
     else:
