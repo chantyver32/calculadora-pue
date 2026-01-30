@@ -40,7 +40,7 @@ st.markdown("""
 productos = {
 
     # --- ABARROTES ---
-    "-----------",
+    "-----------": 0,
     "AGUA CIEL 20 LT": 1.0,
     "AZÚCAR REFINADA KG": 1.0,
     # --- EMPAQUES Y DESECHABLES ---
