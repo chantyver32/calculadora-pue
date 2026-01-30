@@ -1,14 +1,24 @@
 import streamlit as st
 
-hide_style = """
+# Inyectar CSS para ocultar la barra de herramientas de Streamlit Cloud
+hide_cloud_toolbar = """
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    /* Oculta el contenedor del botón de 'Alojado en Streamlit' y el perfil */
+    [data-testid="stStatusWidget"] {
+        display: none;
+    }
+    
+    /* Refuerzo para ocultar la barra superior y el pie de página */
     header {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Elimina el espacio extra que queda arriba */
+    .block-container {
+        padding-top: 2rem;
+    }
     </style>
     """
-st.markdown(hide_style, unsafe_allow_html=True)
-
+st.markdown(hide_cloud_toolbar, unsafe_allow_html=True)
 
 
 # 1. Configuración de página
