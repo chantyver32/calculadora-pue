@@ -104,10 +104,10 @@ with col1:
 with col2:
     st.button("LIMPIAR", on_click=limpiar_pantalla)
 
-# 4. Lógica de cálculo con validación de selección
+# 4. Lógica de cálculo
 if calcular:
-    if opcion == "":
-        st.warning("⚠️ Por favor, selecciona el artículo.")
+    if opcion == "--- SELECCIONA UN ARTÍCULO ---":
+        st.warning("⚠️ Por favor, selecciona un artículo de la lista antes de calcular.")
     elif peso_kg is None:
         st.warning("⚠️ Por favor, ingresa el peso.")
     else:
@@ -115,17 +115,23 @@ if calcular:
         
         if opcion == "TINTA EPSON 544 (CMYK)":
             peso_ajustado = peso_kg - 0.030
-            resultado = peso_ajustado / 0.078 if peso_ajustado >= 0 else None
-            if resultado is None: st.error("Peso insuficiente.")
+            if peso_ajustado < 0:
+                st.error("Error: El peso es menor al envase (0.030).")
+                resultado = None
+            else:
+                resultado = peso_ajustado / 0.078
         else:
             resultado = peso_kg / divisor
 
         if resultado is not None:
             st.divider()
             st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
-
-else:
+            
+            # Aquí se agrega lo que faltaba:
+            if opcion == "TINTA EPSON 544 (CMYK)":
+                st.caption("Fórmula: (Peso - 0.030) / 0.078")
+            else:
                 st.caption(f"PUE utilizado: {divisor}")
 
 st.markdown("---")
-st.caption("v1.2 - Herramienta Interna Champlitte")
+st.caption("v1.0 - Herramienta Interna Champlitte")
