@@ -155,7 +155,7 @@ if calcular:
             
             # Aquí se agrega lo que faltaba:
             if opcion == "TINTA EPSON 544 (CMYK)":
-                st.caption("Fórmula: (Peso - 0.030) / 0.078")
+                st.caption("PUE utilizado: - 0.030 / 0.078")
             else:
                 st.caption(f"PUE utilizado: {divisor}")
 
