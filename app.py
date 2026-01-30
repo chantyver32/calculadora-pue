@@ -124,5 +124,8 @@ if calcular:
             st.divider()
             st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
 
+else:
+                st.caption(f"PUE utilizado: {divisor}")
+
 st.markdown("---")
 st.caption("v1.2 - Herramienta Interna Champlitte")
