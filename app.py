@@ -1,5 +1,16 @@
 import streamlit as st
 
+hide_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """
+st.markdown(hide_style, unsafe_allow_html=True)
+
+
+
 # 1. Configuración de página
 st.set_page_config(page_title="PUE Champlitte", page_icon="🧮", layout="centered")
 
