@@ -39,8 +39,8 @@ st.markdown("""
 # 3. Diccionario de productos
 productos = {
 
-    -----------
     # --- ABARROTES ---
+    "-----------"
     "AGUA CIEL 20 LT": 1.0,
     "AZÚCAR REFINADA KG": 1.0,
     # --- EMPAQUES Y DESECHABLES ---
