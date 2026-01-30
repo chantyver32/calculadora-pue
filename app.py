@@ -44,8 +44,15 @@ st.write("Pastelería Champlitte 2026")
 opciones = sorted(list(productos.keys()))
 opcion = st.selectbox("Selecciona el artículo:", opciones)
 
-# 2. Entrada de datos (teclado numérico en móvil)
-peso_kg = st.number_input("Ingresa el peso total:", min_value=0.0, step=0.1, format="%.3f")
+# 2. Entrada de datos (Formato 0.000 y sin valor predeterminado para facilitar escritura)
+peso_kg = st.number_input(
+    "Ingresa el peso total:", 
+    min_value=0.0, 
+    step=0.001, 
+    format="%.3f", 
+    value=None,  # Esto hace que el campo aparezca vacío al inicio
+    placeholder="0.000" # Muestra esto como guía
+)
 
 # 3. Botón de cálculo
 if st.button("CALCULAR"):
