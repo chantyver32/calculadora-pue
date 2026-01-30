@@ -62,37 +62,5 @@ if st.button("CALCULAR"):
     else:
         st.error("Error en el divisor.")
 
-# 3. Operación con regla especial para Tinta Epson
-if st.button("CALCULAR"):
-    # Obtenemos el divisor base del diccionario
-    divisor = productos[opcion]
-    
-    # Aplicamos la lógica según el producto
-    if opcion == "TINTA EPSON 544 (CMYK)":
-        # Regla especial: (Peso - 0.030) / 0.078
-        ajuste = peso_kg - 0.030
-        if ajuste < 0:
-            st.warning("El peso ingresado es menor al peso del envase (0.030).")
-            resultado = 0.0
-        else:
-            resultado = ajuste / 0.078
-    else:
-        # Cálculo normal para el resto de productos
-        if divisor > 0:
-            resultado = peso_kg / divisor
-        else:
-            resultado = 0.0
-
-    # Mostrar resultado
-    if divisor > 0:
-        st.divider()
-        st.metric(label=f"Resultado para {opcion}", value=f"{resultado:.4f}")
-        
-        # Nota explicativa solo para la tinta
-        if opcion == "TINTA EPSON 544 (CMYK)":
-            st.info("Se aplicó la fórmula especial: (Peso - 0.030) / 0.078")
-        else:
-            st.caption(f"Factor PUE utilizado: {divisor}")
-
 st.markdown("---")
 st.caption("v1.0 - Herramienta interna basada en la Tabla Corporativa de Pesos Unitarios.")
