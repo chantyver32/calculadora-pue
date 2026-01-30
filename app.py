@@ -107,7 +107,6 @@ def limpiar_pantalla():
 
 # Títulos
 st.title("🧮 Calculadora PUE")
-st.write("Pastelería Champlitte 2026")
 
 # 1. Selección de producto
 opciones = sorted(list(productos.keys()))
