@@ -12,32 +12,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# CSS para eliminar definitivamente las flechas (+/-) y mejorar el diseño en móvil
-st.markdown("""
-    <style>
-    /* Elimina flechas en Chrome, Safari, Edge y Opera */
-    input::-webkit-outer-spin-button,
-    input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    /* Elimina flechas en Firefox */
-    input[type=number] {
-        -moz-appearance: textfield;
-    }
-    /* Estilo del botón calcular */
-    .stButton>button { 
-        width: 100%; 
-        border-radius: 10px; 
-        height: 3.5em; 
-        background-color: #FF4B4B; 
-        color: white; 
-        font-weight: bold;
-        font-size: 18px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
 # Diccionario completo de productos y sus divisores (PUE)
 productos = {
  
