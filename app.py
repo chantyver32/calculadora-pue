@@ -14,12 +14,8 @@ st.markdown("""
 
 # Diccionario completo de productos y sus divisores (PUE)
 productos = {
-    "AGUA CIEL 20 LT": 1,
-    "AZÚCAR REFINADA KG": 1,
-    "BOLSA CAMISETA LOGO CH KG": 1,
-    "BOLSA CAMISETA LOGO GDE KG": 1,
+ 
     "BOLSA LOCK PZA": 0.018,
-    "BOLSA NATURAL 18 X 25 KG": 1,
     "BOLSA PAPEL CAFÉ #5 PQ/100": 0.832,
     "BOLSA PAPEL CAFÉ #6 PQ/100": 0.870,
     "BOLSA PAPEL CAFÉ #14 PQ/100": 1.364,
@@ -54,13 +50,33 @@ peso_kg = st.number_input("Ingresa el peso total:", min_value=0.0, step=0.1, for
 # 3. Botón de cálculo
 if st.button("CALCULAR"):
     divisor = productos[opcion]
-    if divisor > 0:
+    
+    # Lógica especial para la Tinta Epson
+    if opcion == "TINTA EPSON 544 (CMYK)":
+        peso_ajustado = peso_kg - 0.030
+        if peso_ajustado < 0:
+            st.error("El peso es menor a 0.030 (peso del envase).")
+            resultado = 0
+        else:
+            resultado = peso_ajustado / 0.078
+    
+    # Lógica normal para los demás productos
+    elif divisor > 0:
         resultado = peso_kg / divisor
-        st.divider()
-        st.metric(label=f"{opcion}", value=f"{resultado:.2f}")
-        st.caption(f"PUE utilizado: {divisor}")
     else:
         st.error("Error en el divisor.")
+        resultado = None
+
+    # Mostrar el resultado si el cálculo fue exitoso
+    if resultado is not None:
+        st.divider()
+        st.metric(label=f"{opcion}", value=f"{resultado:.2f}")
+        
+        # Pie de página dinámico
+        if opcion == "TINTA EPSON 544 (CMYK)":
+            st.caption("Fórmula: (Peso - 0.030) / 0.078")
+        else:
+            st.caption(f"PUE utilizado: {divisor}")
 
 st.markdown("---")
 st.caption("v1.0 - Herramienta interna basada en la Tabla Corporativa de Pesos Unitarios.")
