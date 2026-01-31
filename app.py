@@ -62,7 +62,7 @@ except:
 
 # 3. Diccionario de productos
 productos = {
-    "--- SELECCIONA UN ARTÍCULO ---": 0,
+    "": 0,
     "BOLSA PAPEL CAFÉ #5 PQ/100": 0.832,
     "BOLSA PAPEL CAFÉ #6 PQ/100": 0.870,
     "BOLSA PAPEL CAFÉ #14 PQ/100": 1.364,
@@ -118,7 +118,7 @@ def limpiar_pantalla():
     st.session_state["peso_input"] = None
     st.session_state["tara_input"] = None
     st.session_state["activar_tara"] = False
-    st.session_state["producto_sel"] = "--- SELECCIONA UN ARTÍCULO ---"
+    st.session_state["producto_sel"] = ""
 
 # --- INTERFAZ ---
 st.write("## Calculadora de PUE")
@@ -147,7 +147,7 @@ with col2:
 
 # --- LÓGICA DE CÁLCULO UNIFICADA ---
 if btn_calcular:
-    if opcion == "--- SELECCIONA UN ARTÍCULO ---" or opcion == "":
+    if opcion == "" or opcion == "":
         st.warning("⚠️ Selecciona un artículo.")
     elif peso_total is None:
         st.warning("⚠️ Ingresa el peso total.")
