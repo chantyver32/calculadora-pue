@@ -5,7 +5,7 @@ import os
 # 1. Configuración de página
 st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
 
-# 2. CSS: Fondo Blanco, Texto Negro y Botones
+# 2. CSS: Fondo Blanco, Botones con efecto rebote y letras negras
 st.markdown(
     """
     <style>
@@ -14,52 +14,60 @@ st.markdown(
         background-color: #FFFFFF;
     }
     
-    /* Texto en Negro */
+    /* Forzar texto en negro */
     .stApp, p, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {
         color: #000000 !important;
     }
 
-    /* Ocultar elementos de Streamlit Cloud */
+    /* Ocultar elementos de Streamlit */
     header[data-testid="stHeader"], footer {
         visibility: hidden !important;
         height: 0;
     }
 
-    /* Quitar flechas de los números */
+    /* Estilo de los Botones */
+    div.stButton > button {
+        width: 100%;
+        border-radius: 12px;
+        height: 3.5em;
+        background-color: #fff2bd !important; /* Color solicitado */
+        color: #000000 !important; /* Letras negras */
+        font-weight: bold;
+        border: 1px solid #e0d5a6 !important;
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Efecto suavizado */
+    }
+
+    /* Efecto Rebote al hacer clic (Active) */
+    div.stButton > button:active {
+        transform: scale(0.92); /* Se encoge un poco */
+    }
+    
+    /* Efecto al pasar el mouse */
+    div.stButton > button:hover {
+        border: 1px solid #000000 !important;
+        background-color: #ffe88a !important; /* Un tono más fuerte al pasar el mouse */
+    }
+
+    /* Métrica en Negro para que combine */
+    div[data-testid="stMetricValue"] { 
+        font-size: 45px; 
+        color: #000000 !important; 
+    }
+
+    /* Eliminar flechas de inputs */
     input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
         -webkit-appearance: none; margin: 0;
     }
     input[type=number] { -moz-appearance: textfield; }
-
-    /* Botón CALCULAR Rojo Champlitte */
-    div.stButton > button:first-child {
-        width: 100%;
-        border-radius: 10px;
-        height: 3.5em;
-        background-color: #B22222;
-        color: white !important;
-        font-weight: bold;
-    }
     
-    /* Botón LIMPIAR Gris */
-    div[data-testid="column"] .stButton > button {
-        background-color: #6c757d;
-        color: white !important;
-    }
-
-    /* Métrica en Rojo */
-    div[data-testid="stMetricValue"] { 
-        font-size: 45px; 
-        color: #B22222 !important; 
-    }
+    .block-container { padding-top: 1.5rem !important; }
     </style>
     """, 
     unsafe_allow_html=True
 )
 
-# --- LOGO CHAMPLITTE (Más pequeño) ---
-nombre_imagen = "champlitte.jpg"
-# Intentamos cargar la imagen desde la ruta del script
+# --- LOGO CHAMPLITTE (Pequeño) ---
+nombre_imagen = "champlitte.jpeg"
 ruta_actual = os.path.dirname(__file__)
 ruta_imagen = os.path.join(ruta_actual, nombre_imagen)
 
@@ -68,9 +76,7 @@ try:
         img = Image.open(ruta_imagen)
     else:
         img = Image.open(nombre_imagen)
-    
-    # Reducimos el width a 150 para que sea pequeña
-    st.image(img, width=150)
+    st.image(img, width=120) # Imagen pequeña
 except:
     st.write("### PASTELERÍA CHAMPLITTE")
 
@@ -114,11 +120,10 @@ def limpiar_pantalla():
 # --- INTERFAZ ---
 st.write("## Calculadora de Unidades")
 
-opcion = st.selectbox("Selecciona el artículo:", sorted(list(productos.keys())), key="producto_sel")
+opcion = st.selectbox("Artículo:", sorted(list(productos.keys())), key="producto_sel")
 
 col_a, col_b = st.columns(2)
 with col_a:
-    # value=None hace que el campo inicie vacío (con el placeholder invisible)
     peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="peso_input")
 
 with col_b:
@@ -127,6 +132,8 @@ with col_b:
         peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="tara_input")
     else:
         peso_tara = 0.0
+
+st.write("") # Espaciador
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -156,7 +163,7 @@ if calcular:
             st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
             
             txt_formula = f"({peso_total:.3f} - {tara_final:.3f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
-            st.caption(f"Fórmula aplicada: {txt_formula}")
+            st.caption(f"Fórmula: {txt_formula}")
 
 st.markdown("---")
-st.caption("v1.6 - Herramienta Interna Champlitte")
+st.caption("v1.0 - Champlitte)
