@@ -129,7 +129,7 @@ with col_a:
 with col_b:
     usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
     if usar_tara:
-        peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="tara_input")
+        peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="none", value=None, placeholder="0.000", key="tara_input")
     else:
         peso_tara = 0.0
 
