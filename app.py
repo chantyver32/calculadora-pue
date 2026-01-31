@@ -191,4 +191,4 @@ with col_btn2:
     st.button("LIMPIAR", on_click=limpiar)
 
 st.markdown("---")
-st.caption("v1.0 - Champlitte )
+st.caption("v2.0 - Champlitte | Precisión Decimal Total")
