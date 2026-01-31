@@ -179,9 +179,9 @@ if btn_calcular:
                 
                 # Fórmula informativa
                 if usar_tara:
-                    txt_formula = f"({peso_total:.4f} - {tara_final:.4f}) / {pue}"
+                    txt_formula = f"({peso_total:.3f} - {tara_final:.4f}) / {pue}"
                 else:
-                    txt_formula = f"{peso_total:.4f} / {pue}"
+                    txt_formula = f"{peso_total:.3f} / {pue}"
                 
                 st.caption(f"Fórmula utilizada: {txt_formula}")
                 st.caption(f"PUE utilizado: {pue}")
