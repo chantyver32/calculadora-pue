@@ -169,4 +169,4 @@ if calcular:
             st.caption(f"Fórmula: {txt_formula}")
 
 st.markdown("---")
-st.caption("v1.0 - Champlitte")
+st.caption("v1.0")
