@@ -9,20 +9,19 @@ st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="center
 st.markdown(
     """
     <style>
-    /* Fondo crema extremadamente tenue */
+    /* Fondo crema muy suave */
     .stApp {
-        background-color: #FFFEFA;
+        background-color: #FFFDF0;
     }
     
-    /* Forzar color de texto negro para legibilidad */
+    /* Forzar color de texto negro para máxima legibilidad */
     .stApp, p, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {
-        color: #000000 !important;
-        font-weight: 500;
+        color: #1A1A1A !important;
     }
 
     /* Ocultar elementos de Streamlit Cloud */
     header[data-testid="stHeader"], footer {
-        visibility: hidden;
+        visibility: hidden !important;
         height: 0;
     }
 
@@ -61,14 +60,15 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- LOGO CHAMPLITTE ---
-try:
-    if os.path.exists("champlitte.jpeg"):
-        st.image("champlitte.jpeg", width=250)
-    else:
-        st.title("PASTELERÍA CHAMPLITTE")
-except:
-    st.title("PASTELERÍA CHAMPLITTE")
+# --- LOGO CHAMPLITTE (CENTRADO) ---
+col_logo, _ = st.columns([2, 1])
+with col_logo:
+    try:
+        # Asegúrate de que el archivo 'champlitte.jpeg' esté en la misma carpeta
+        img = Image.open("champlitte.jpeg")
+        st.image(img, width=300)
+    except FileNotFoundError:
+        st.error("No se encontró el archivo 'champlitte.jpeg'. Asegúrate de subirlo.")
 
 # 3. Diccionario de productos
 productos = {
@@ -109,7 +109,7 @@ def limpiar_pantalla():
     st.session_state["producto_sel"] = ""
 
 # --- INTERFAZ ---
-st.subheader("Calculadora de Unidades")
+st.write("### Calculadora de Unidades")
 
 # 1. Selección de producto
 opcion = st.selectbox("Selecciona el artículo:", sorted(list(productos.keys())), key="producto_sel")
@@ -156,7 +156,7 @@ if calcular:
         st.warning("⚠️ Ingresa el peso total.")
     else:
         pue = productos[opcion]
-        # Si la tara es None (vacia), se trata como 0
+        # Si la tara es None, se cuenta como 0
         tara_final = peso_tara if peso_tara is not None else 0.0
         peso_neto = peso_total - tara_final
         
@@ -171,9 +171,9 @@ if calcular:
             st.divider()
             st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
             
-            # Detalle del cálculo
-            txt_tara = f" - {tara_final:.3f}" if usar_tara else ""
-            st.caption(f"Fórmula: ({peso_total:.3f}{txt_tara}) / {pue}")
+            # Detalle del cálculo para auditoría rápida
+            txt_formula = f"({peso_total:.3f} - {tara_final:.3f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
+            st.caption(f"Fórmula: {txt_formula}")
 
 st.markdown("---")
-st.caption("v1.3 - Champlitte Internal Tool")
+st.caption("v1.4 - Herramienta Interna Champlitte")
