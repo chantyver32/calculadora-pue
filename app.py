@@ -118,7 +118,7 @@ def limpiar_pantalla():
     st.session_state["producto_sel"] = ""
 
 # --- INTERFAZ ---
-st.write("## Calculadora de Unidades")
+st.write("## Calculadora de PUE")
 
 opcion = st.selectbox("Artículo:", sorted(list(productos.keys())), key="producto_sel")
 
