@@ -168,5 +168,34 @@ if calcular:
             txt_formula = f"({peso_total:.4f} - {tara_final:.4f}) / {pue}" if usar_tara else f"{peso_total:.4f} / {pue}"
             st.caption(f"Fórmula: {txt_formula}")
 
+# 4. Lógica de cálculo y Alerta de PUE = 1
+if calcular:
+    if opcion == "--- SELECCIONA UN ARTÍCULO ---":
+        st.warning("⚠️ Por favor, selecciona un artículo de la lista.")
+    elif peso_kg is None:
+        st.warning("⚠️ Por favor, ingresa el peso.")
+    else:
+        divisor = productos[opcion]
+        
+        # MOSTRAR CUADRO ROJO SI EL PUE ES 1
+        if divisor == 1.0:
+            st.error("📢 El artículo se pesa por pieza, kilo o litro.")
+        
+        # Lógica de la Tinta Epson
+        if opcion == "TINTA EPSON 544 (CMYK)":
+            peso_ajustado = peso_kg - 0.030
+            if peso_ajustado < 0:
+                st.error("Error: El peso es menor al envase (0.030).")
+                resultado = None
+            else:
+                resultado = peso_ajustado / 0.078
+        else:
+            resultado = peso_kg / divisor
+
+        if resultado is not None:
+            st.divider()
+            st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
+            st.caption(f"PUE utilizado: {divisor}")
+
 st.markdown("---")
 st.caption("v1.0")
