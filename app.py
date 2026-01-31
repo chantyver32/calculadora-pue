@@ -128,7 +128,7 @@ opcion = st.selectbox("Artículo:", opciones_lista, key="producto_sel")
 
 col_a, col_b = st.columns(2)
 with col_a:
-    peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.4f", step=0.0001, value=None, placeholder="0.0000", key="peso_input")
+    peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.3f", step=0.001, value=None, placeholder="0.000", key="peso_input")
 
 with col_b:
     usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
