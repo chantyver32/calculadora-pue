@@ -65,7 +65,7 @@ col_logo, _ = st.columns([2, 1])
 with col_logo:
     try:
         # Asegúrate de que el archivo 'champlitte.jpeg' esté en la misma carpeta
-        img = Image.open("champlitte.jpeg")
+        img = Image.open("champlitte.jpg")
         st.image(img, width=300)
     except FileNotFoundError:
         st.error("No se encontró el archivo 'champlitte.jpeg'. Asegúrate de subirlo.")
