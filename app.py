@@ -58,7 +58,7 @@ st.markdown(
 )
 
 # --- LOGO CHAMPLITTE (Más pequeño) ---
-nombre_imagen = "champlitte.jpeg"
+nombre_imagen = "champlitte.jpg"
 # Intentamos cargar la imagen desde la ruta del script
 ruta_actual = os.path.dirname(__file__)
 ruta_imagen = os.path.join(ruta_actual, nombre_imagen)
