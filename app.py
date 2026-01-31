@@ -1,50 +1,32 @@
 import streamlit as st
+from PIL import Image
 
-# Código para forzar la eliminación de la barra de herramientas de Streamlit Cloud
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
+
+# --- CSS PERSONALIZADO (FONDO CREMA Y BOTONES) ---
 st.markdown(
     """
     <style>
-    /* 1. Ocultar el contenedor de la derecha (barquito y avatar) */
-    div[data-testid="stStatusWidget"] {
-        display: none !important;
+    /* Fondo color crema para toda la app */
+    .stApp {
+        background-color: #FFFDD0;
     }
     
-    /* 2. Ocultar la barra superior completa por si queda rastro */
-    header[data-testid="stHeader"] {
+    /* Ocultar elementos de Streamlit Cloud */
+    div[data-testid="stStatusWidget"], header[data-testid="stHeader"] {
         display: none !important;
     }
-    
-    /* 3. Eliminar el menú de hamburguesa y el pie de página */
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
-    
-    /* 4. Ajustar el margen superior para que no quede un hueco vacío */
-    .block-container {
-        padding-top: 1rem !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
-# 1. Configuración de página
-st.set_page_config(page_title="PUE Champlitte", page_icon="🧮", layout="centered")
+    /* Eliminar flechas de inputs numéricos */
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
+        -webkit-appearance: none; margin: 0;
+    }
+    input[type=number] { -moz-appearance: textfield; }
 
-# 2. CSS Avanzado: Elimina flechas, ajusta botones y métricas
-st.markdown("""
-    <style>
-    /* Eliminar flechas en Chrome, Safari, Edge, Opera */
-    input::-webkit-outer-spin-button,
-    input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    /* Eliminar flechas en Firefox */
-    input[type=number] {
-        -moz-appearance: textfield;
-    }
-    .main { padding-top: 1rem; }
-    /* Estilo botón Calcular (Rojo) */
+    /* Estilo botones */
     div.stButton > button:first-child {
         width: 100%;
         border-radius: 10px;
@@ -52,23 +34,22 @@ st.markdown("""
         background-color: #FF4B4B;
         color: white;
         font-weight: bold;
-        border: none;
     }
-    /* Estilo botón Limpiar (Gris) */
     div[data-testid="column"] .stButton > button {
         background-color: #6c757d;
         height: 3em;
     }
-    div[data-testid="stMetricValue"] { font-size: 40px; }
+    
+    .block-container { padding-top: 2rem !important; }
+    div[data-testid="stMetricValue"] { font-size: 40px; color: #5D4037; }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
-# 3. Diccionario de productos
+# --- DICCIONARIO DE PRODUCTOS ---
 productos = {
-
     "": 0,
-  
-    # --- EMPAQUES Y DESECHABLES ---
     "BOLSA PAPEL CAFÉ #5 PQ/100": 0.832,
     "BOLSA PAPEL CAFÉ #6 PQ/100": 0.870,
     "BOLSA PAPEL CAFÉ #14 PQ/100": 1.364,
@@ -83,12 +64,10 @@ productos = {
     "EMPLAYE GRANDE ROLLO": 1.174,
     "PAPEL ALUMINIO PZA": 1.342,
     "SERVILLETA PQ/500 HJ": 0.001192,
-    # --- LIMPIEZA Y QUÍMICOS ---
     "COFIA PQ/100 PZS": 0.238,
     "GUANTES TRANSP POLIURETANO PQ/100": 0.086,
     "HIGIENICO SCOTT ROLLO": 0.500,
     "TOALLA ROLLO 180M PZA": 1.115,
-    # --- PAPELERÍA ---
     "BOLSA LOCK PZA": 0.018,
     "CAJA DE GRAPAS": 0.176,
     "CINTA TRANSP EMPAQUE PZA": 0.272,
@@ -97,34 +76,49 @@ productos = {
     "ETIQUETA BLANCA ADH 13 X 19 PQ": 0.050,
     "HOJAS BLANCAS PAQ/500": 2.146,
     "TINTA EPSON 544 (CMYK)": 0.078,
-  
 }
 
-# Función para resetear la app
+# --- FUNCIONES ---
 def limpiar_pantalla():
-    st.session_state["peso_input"] = None
-    st.session_state["producto_sel"] = sorted(list(productos.keys()))[0]
+    st.session_state["peso_input"] = 0.0
+    st.session_state["producto_sel"] = ""
+    st.session_state["aplicar_tara"] = False
+    st.session_state["valor_tara"] = 0.0
 
-# Títulos
-st.title("🧮 Calculadora PUE")
+# --- INTERFAZ ---
+# Mostrar Logo
+try:
+    img = Image.open("champlitte.jpeg")
+    st.image(img, width=250)
+except:
+    st.title("Champlitte")
+
+st.subheader("Calculadora PUE")
 
 # 1. Selección de producto
 opciones = sorted(list(productos.keys()))
 opcion = st.selectbox("Selecciona el artículo:", opciones, key="producto_sel")
 
-# 2. Entrada de peso
-peso_kg = st.number_input(
-    "Ingresa el peso total:", 
-    min_value=0.0, 
-    format="%.3f", 
-    value=None, 
-    placeholder="0.000",
-    key="peso_input"
-)
+# 2. Entrada de peso y Tara
+col_p1, col_p2 = st.columns(2)
 
-# 3. Botones (Calculo y Limpieza)
+with col_p1:
+    peso_kg = st.number_input(
+        "Peso Total:", 
+        min_value=0.0, 
+        format="%.3f", 
+        key="peso_input"
+    )
+
+with col_p2:
+    usa_tara = st.checkbox("¿Descontar Tara?", key="aplicar_tara")
+    if usa_tara:
+        tara = st.number_input("Peso Tara:", min_value=0.0, format="%.3f", key="valor_tara")
+    else:
+        tara = 0.0
+
+# 3. Botones
 col1, col2 = st.columns([3, 1])
-
 with col1:
     calcular = st.button("CALCULAR")
 with col2:
@@ -133,31 +127,30 @@ with col2:
 # 4. Lógica de cálculo
 if calcular:
     if opcion == "":
-        st.warning("⚠️ Por favor, selecciona el artículo.")
-    elif peso_kg is None:
-        st.warning("⚠️ Por favor, ingresa el peso.")
+        st.warning("⚠️ Selecciona un artículo.")
+    elif peso_kg <= 0:
+        st.warning("⚠️ Ingresa un peso válido.")
     else:
         divisor = productos[opcion]
         
-        if opcion == "TINTA EPSON 544 (CMYK)":
-            peso_ajustado = peso_kg - 0.030
-            if peso_ajustado < 0:
-                st.error("Error: El peso es menor al envase (0.030).")
-                resultado = None
-            else:
-                resultado = peso_ajustado / 0.078
+        # Cálculo del peso neto
+        peso_neto = peso_kg - tara
+        
+        if peso_neto < 0:
+            st.error("Error: La tara es mayor al peso total.")
         else:
-            resultado = peso_kg / divisor
-
-        if resultado is not None:
-            st.divider()
-            st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
-            
-            # Aquí se agrega lo que faltaba:
+            # Caso especial Tinta Epson
             if opcion == "TINTA EPSON 544 (CMYK)":
-                st.caption("PUE utilizado: - 0.030 / 0.078")
+                # La lógica original restaba 0.030 adicional
+                resultado = (peso_neto - 0.030) / 0.078
+                formula_txt = f"({peso_neto:.3f} - 0.030) / 0.078"
             else:
-                st.caption(f"PUE utilizado: {divisor}")
+                resultado = peso_neto / divisor
+                formula_txt = f"{peso_neto:.3f} / {divisor}"
+
+            st.divider()
+            st.metric(label=f"Cantidad Estimada", value=f"{resultado:.2f}")
+            st.caption(f"Fórmula aplicada: {formula_txt}")
 
 st.markdown("---")
-st.caption("v1.0 - Herramienta Interna Champlitte")
+st.caption("v1.1 - Herramienta Interna Champlitte | Fondo Crema & Sistema de Tara")
