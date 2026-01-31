@@ -67,7 +67,7 @@ st.markdown(
 )
 
 # --- LOGO CHAMPLITTE (Pequeño) ---
-nombre_imagen = "champlitte.jpeg"
+nombre_imagen = "champlitte.jpg"
 ruta_actual = os.path.dirname(__file__)
 ruta_imagen = os.path.join(ruta_actual, nombre_imagen)
 
