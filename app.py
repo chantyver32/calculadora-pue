@@ -5,7 +5,7 @@ import os
 # 1. Configuración de página
 st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
 
-# 2. CSS: Fondo Blanco, Botones Amarillos con Rebote, Línea Negra y Texto
+# 2. CSS: Fondo Blanco, Botones con efecto rebote y letras negras
 st.markdown(
     """
     <style>
@@ -25,125 +25,62 @@ st.markdown(
         height: 0;
     }
 
-    /* Estilo de los Botones (Amarillo #fff2bd) */
+    /* Estilo de los Botones */
     div.stButton > button {
         width: 100%;
         border-radius: 12px;
         height: 3.5em;
-        background-color: #fff2bd !important;
-        color: #000000 !important;
+        background-color: #fff2bd !important; /* Color solicitado */
+        color: #000000 !important; /* Letras negras */
         font-weight: bold;
         border: 1px solid #e0d5a6 !important;
-        transition: transform 0.1s ease-in-out;
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Efecto suavizado */
     }
 
-    /* Efecto Rebote al tocar */
+    /* Efecto Rebote al hacer clic (Active) */
     div.stButton > button:active {
-        transform: scale(0.90);
+        transform: scale(0.92); /* Se encoge un poco */
     }
     
+    /* Efecto al pasar el mouse */
     div.stButton > button:hover {
         border: 1px solid #000000 !important;
+        background-color: #ffe88a !important; /* Un tono más fuerte al pasar el mouse */
     }
 
-    /* Métrica en Negro */
+    /* Métrica en Negro para que combine */
     div[data-testid="stMetricValue"] { 
-        font-size: 50px; 
-        color: #000000 !important;
-        text-align: center;
-    }
-    div[data-testid="stMetricLabel"] {
-        text-align: center;
+        font-size: 45px; 
+        color: #000000 !important; 
     }
 
-    /* Línea divisoria negra personalizada */
-    .black-line {
-        border: 0;
-        height: 2px;
-        background: #000000;
-        margin-bottom: 25px;
-        margin-top: 10px;
-    }
-
-    /* Inputs numéricos sin flechas */
+    /* Eliminar flechas de inputs */
     input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
         -webkit-appearance: none; margin: 0;
     }
     input[type=number] { -moz-appearance: textfield; }
     
-    .block-container { padding-top: 1rem !important; }
+    .block-container { padding-top: 1.5rem !important; }
     </style>
     """, 
     unsafe_allow_html=True
 )
 
-# --- INICIALIZACIÓN DE ESTADOS ---
-if 'resultado' not in st.session_state:
-    st.session_state.resultado = None
-if 'detalle' not in st.session_state:
-    st.session_state.detalle = ""
-
-# --- LOGO CHAMPLITTE ---
+# --- LOGO CHAMPLITTE (Pequeño) ---
 nombre_imagen = "champlitte.jpg"
-ruta_imagen = os.path.join(os.path.dirname(__file__), nombre_imagen)
+ruta_actual = os.path.dirname(__file__)
+ruta_imagen = os.path.join(ruta_actual, nombre_imagen)
 
-col_logo_center, _ = st.columns([1, 2])
-with col_logo_center:
-    try:
-        img = Image.open(ruta_imagen if os.path.exists(ruta_imagen) else nombre_imagen)
-        st.image(img, width=110)
-    except:
-        st.write("### CHAMPLITTE")
-
-# --- 4. ÁREA DE RESULTADO (ARRIBA) ---
-if st.session_state.resultado is not None:
-    st.metric(label="CANTIDAD CALCULADA", value=st.session_state.resultado)
-    if st.session_state.detalle:
-        st.caption(st.session_state.detalle)
-else:
-    st.write("###") # Espacio cuando no hay resultado
-
-# LÍNEA DIVISORIA NEGRA
-st.markdown('<div class="black-line"></div>', unsafe_allow_html=True)
-
-# --- FUNCIONES DE LÓGICA ---
-def calcular_pue():
-    if st.session_state.producto_sel == "":
-        st.warning("⚠️ Selecciona un artículo.")
-        return
-    
-    peso_t = st.session_state.peso_input
-    if peso_t is None or peso_t <= 0:
-        st.warning("⚠️ Ingresa un peso válido.")
-        return
-
-    pue = productos[st.session_state.producto_sel]
-    tara_f = st.session_state.tara_input if (st.session_state.activar_tara and st.session_state.tara_input is not None) else 0.0
-    
-    peso_neto = peso_t - tara_f
-    
-    if peso_neto < 0:
-        st.error("La tara es mayor al peso.")
+try:
+    if os.path.exists(ruta_imagen):
+        img = Image.open(ruta_imagen)
     else:
-        # Caso Tinta Epson
-        if st.session_state.producto_sel == "TINTA EPSON 544 (CMYK)":
-            res = (peso_neto - 0.030) / 0.078
-        else:
-            res = peso_neto / pue
-        
-        st.session_state.resultado = f"{res:.2f}"
-        txt_tara = f" - {tara_f:.3f}" if st.session_state.activar_tara else ""
-        st.session_state.detalle = f"Fórmula: ({peso_t:.3f}{txt_tara}) / {pue}"
+        img = Image.open(nombre_imagen)
+    st.image(img, width=120) # Imagen pequeña
+except:
+    st.write("### PASTELERÍA CHAMPLITTE")
 
-def limpiar():
-    st.session_state.peso_input = None
-    st.session_state.tara_input = None
-    st.session_state.activar_tara = False
-    st.session_state.producto_sel = ""
-    st.session_state.resultado = None
-    st.session_state.detalle = ""
-
-# --- 3. DICCIONARIO DE PRODUCTOS ---
+# 3. Diccionario de productos
 productos = {
     "": 0,
     "BOLSA PAPEL CAFÉ #5 PQ/100": 0.832,
@@ -174,25 +111,59 @@ productos = {
     "TINTA EPSON 544 (CMYK)": 0.078,
 }
 
-# --- CAPTURA DE DATOS ---
-opcion = st.selectbox("Selecciona artículo:", sorted(list(productos.keys())), key="producto_sel")
+def limpiar_pantalla():
+    st.session_state["peso_input"] = None
+    st.session_state["tara_input"] = None
+    st.session_state["activar_tara"] = False
+    st.session_state["producto_sel"] = ""
 
-col_p1, col_p2 = st.columns(2)
-with col_p1:
-    st.number_input("Peso Total:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="peso_input")
+# --- INTERFAZ ---
+st.write("## Calculadora de Unidades")
 
-with col_p2:
-    st.checkbox("Descontar Tara", key="activar_tara")
-    if st.session_state.activar_tara:
-        st.number_input("Peso Tara:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="tara_input")
+opcion = st.selectbox("Artículo:", sorted(list(productos.keys())), key="producto_sel")
 
-st.write("###")
+col_a, col_b = st.columns(2)
+with col_a:
+    peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="peso_input")
 
-col_btn1, col_btn2 = st.columns([3, 1])
-with col_btn1:
-    st.button("CALCULAR", on_click=calcular_pue)
-with col_btn2:
-    st.button("LIMPIAR", on_click=limpiar)
+with col_b:
+    usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
+    if usar_tara:
+        peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="tara_input")
+    else:
+        peso_tara = 0.0
+
+st.write("") # Espaciador
+
+col1, col2 = st.columns([3, 1])
+with col1:
+    calcular = st.button("CALCULAR")
+with col2:
+    st.button("LIMPIAR", on_click=limpiar_pantalla)
+
+if calcular:
+    if opcion == "":
+        st.warning("⚠️ Selecciona un artículo.")
+    elif peso_total is None:
+        st.warning("⚠️ Ingresa el peso total.")
+    else:
+        pue = productos[opcion]
+        tara_final = peso_tara if peso_tara is not None else 0.0
+        peso_neto = peso_total - tara_final
+        
+        if peso_neto < 0:
+            st.error("Error: La tara es mayor al peso total.")
+        else:
+            if opcion == "TINTA EPSON 544 (CMYK)":
+                resultado = (peso_neto - 0.030) / 0.078
+            else:
+                resultado = peso_neto / pue
+
+            st.divider()
+            st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
+            
+            txt_formula = f"({peso_total:.3f} - {tara_final:.3f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
+            st.caption(f"Fórmula: {txt_formula}")
 
 st.markdown("---")
-st.caption("v1.8 - Champlitte Internal Tool")
+st.caption("v1.7 - Champlitte | Diseño Limpio & Efecto Rebote")
