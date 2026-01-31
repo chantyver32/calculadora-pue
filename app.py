@@ -5,26 +5,26 @@ import os
 # 1. Configuración de página
 st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
 
-# 2. CSS Avanzado: Fondo crema tenue, texto oscuro y ajustes de UI
+# 2. CSS Avanzado: Fondo, Colores y Estética
 st.markdown(
     """
     <style>
-    /* Fondo crema muy tenue para legibilidad */
+    /* Fondo crema extremadamente tenue */
     .stApp {
-        background-color: #FFFDF5;
+        background-color: #FFFEFA;
     }
     
-    /* Color de texto global para que se vea bien */
-    .stApp, p, label, .stMarkdown {
-        color: #2D1B08 !important;
+    /* Forzar color de texto negro para legibilidad */
+    .stApp, p, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {
+        color: #000000 !important;
+        font-weight: 500;
     }
 
-    /* Ocultar barra de herramientas de Streamlit Cloud */
-    div[data-testid="stStatusWidget"], header[data-testid="stHeader"] {
-        display: none !important;
+    /* Ocultar elementos de Streamlit Cloud */
+    header[data-testid="stHeader"], footer {
+        visibility: hidden;
+        height: 0;
     }
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important;}
 
     /* Eliminar flechas en inputs numéricos */
     input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
@@ -32,21 +32,21 @@ st.markdown(
     }
     input[type=number] { -moz-appearance: textfield; }
 
-    /* Estilo botón Calcular (Rojo Champlitte) */
+    /* Estilo botón Calcular */
     div.stButton > button:first-child {
         width: 100%;
         border-radius: 10px;
         height: 3.5em;
         background-color: #B22222;
-        color: white;
+        color: white !important;
         font-weight: bold;
         border: none;
     }
     
-    /* Estilo botón Limpiar (Gris) */
+    /* Estilo botón Limpiar */
     div[data-testid="column"] .stButton > button {
         background-color: #6c757d;
-        color: white;
+        color: white !important;
     }
 
     /* Ajuste de métricas */
@@ -55,20 +55,19 @@ st.markdown(
         color: #B22222 !important; 
     }
     
-    .block-container { padding-top: 2rem !important; }
+    .block-container { padding-top: 1rem !important; }
     </style>
     """, 
     unsafe_allow_html=True
 )
 
-# --- CARGAR LOGO ---
-# Se intenta cargar la imagen que adjuntaste
+# --- LOGO CHAMPLITTE ---
 try:
     if os.path.exists("champlitte.jpeg"):
-        st.image("champlitte.jpeg", width=280)
+        st.image("champlitte.jpeg", width=250)
     else:
         st.title("PASTELERÍA CHAMPLITTE")
-except Exception:
+except:
     st.title("PASTELERÍA CHAMPLITTE")
 
 # 3. Diccionario de productos
@@ -104,33 +103,41 @@ productos = {
 
 # Función para resetear
 def limpiar_pantalla():
-    st.session_state["peso_input"] = 0.0
-    st.session_state["producto_sel"] = ""
-    st.session_state["tara_input"] = 0.0
+    st.session_state["peso_input"] = None
+    st.session_state["tara_input"] = None
     st.session_state["activar_tara"] = False
+    st.session_state["producto_sel"] = ""
 
-# --- INTERFAZ DE USUARIO ---
-st.subheader("🧮 Calculadora de Unidades (PUE)")
+# --- INTERFAZ ---
+st.subheader("Calculadora de Unidades")
 
 # 1. Selección de producto
-opciones = sorted(list(productos.keys()))
-opcion = st.selectbox("Selecciona el artículo:", opciones, key="producto_sel")
+opcion = st.selectbox("Selecciona el artículo:", sorted(list(productos.keys())), key="producto_sel")
 
-# 2. Área de Peso y Tara
+# 2. Entrada de Pesos
 col_a, col_b = st.columns(2)
 
 with col_a:
     peso_total = st.number_input(
-        "Ingresa el peso total:", 
+        "Peso Total:", 
         min_value=0.0, 
         format="%.3f", 
+        value=None, 
+        placeholder="0.000",
         key="peso_input"
     )
 
 with col_b:
     usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
     if usar_tara:
-        peso_tara = st.number_input("Peso Tara (editable):", min_value=0.0, format="%.3f", key="tara_input")
+        peso_tara = st.number_input(
+            "Peso Tara:", 
+            min_value=0.0, 
+            format="%.3f", 
+            value=None, 
+            placeholder="0.000",
+            key="tara_input"
+        )
     else:
         peso_tara = 0.0
 
@@ -144,32 +151,29 @@ with col2:
 # 4. Lógica de cálculo
 if calcular:
     if opcion == "":
-        st.warning("⚠️ Por favor, selecciona el artículo.")
-    elif peso_total <= 0:
-        st.warning("⚠️ Por favor, ingresa un peso mayor a cero.")
+        st.warning("⚠️ Selecciona un artículo.")
+    elif peso_total is None:
+        st.warning("⚠️ Ingresa el peso total.")
     else:
         pue = productos[opcion]
+        # Si la tara es None (vacia), se trata como 0
+        tara_final = peso_tara if peso_tara is not None else 0.0
+        peso_neto = peso_total - tara_final
         
-        # Aplicación de la fórmula: (Peso Total - Tara) / PUE
-        peso_calculado = peso_total - peso_tara
-        
-        if peso_calculado < 0:
-            st.error("Error: El peso tara no puede ser mayor al peso total.")
+        if peso_neto < 0:
+            st.error("Error: La tara es mayor al peso total.")
         else:
-            # Caso especial Tinta Epson heredado del código anterior
             if opcion == "TINTA EPSON 544 (CMYK)":
-                resultado = (peso_calculado - 0.030) / 0.078
+                resultado = (peso_neto - 0.030) / 0.078
             else:
-                resultado = peso_calculado / pue
+                resultado = peso_neto / pue
 
             st.divider()
-            st.metric(label=f"Resultado para {opcion}", value=f"{resultado:.2f}")
+            st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
             
-            # Nota informativa
-            if usar_tara:
-                st.caption(f"Cálculo: ({peso_total:.3f} - {peso_tara:.3f}) / {pue}")
-            else:
-                st.caption(f"Cálculo: {peso_total:.3f} / {pue}")
+            # Detalle del cálculo
+            txt_tara = f" - {tara_final:.3f}" if usar_tara else ""
+            st.caption(f"Fórmula: ({peso_total:.3f}{txt_tara}) / {pue}")
 
 st.markdown("---")
-st.caption("v1.2 - Herramienta Interna Champlitte")
+st.caption("v1.3 - Champlitte Internal Tool")
