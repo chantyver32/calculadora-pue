@@ -5,7 +5,7 @@ import os
 # 1. Configuración de página
 st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
 
-# 2. CSS: Fondo Blanco, Botones con Rebote, Box de Resultado y Línea Negra
+# 2. CSS: Fondo Blanco, Botones con efecto rebote y letras negras
 st.markdown(
     """
     <style>
@@ -25,58 +25,36 @@ st.markdown(
         height: 0;
     }
 
-    /* Box del Resultado */
-    .result-box {
-        background-color: #fff2bd;
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-        margin-top: 10px;
-        margin-bottom: 5px;
-        border: 1px solid #e0d5a6;
-    }
-    
-    .result-value {
-        font-size: 55px;
-        font-weight: bold;
-        color: #000000;
-        margin: 0;
-    }
-    
-    .result-label {
-        font-size: 14px;
-        text-transform: uppercase;
-        color: #333333;
-        margin-bottom: 5px;
-    }
-
-    /* Línea divisoria negra personalizada */
-    .black-line {
-        border: 0;
-        height: 2px;
-        background: #000000;
-        margin-bottom: 25px;
-        margin-top: 10px;
-    }
-
-    /* Estilo de los Botones (Amarillo #fff2bd) */
+    /* Estilo de los Botones */
     div.stButton > button {
         width: 100%;
         border-radius: 12px;
         height: 3.5em;
-        background-color: #fff2bd !important;
-        color: #000000 !important;
+        background-color: #fff2bd !important; /* Color solicitado */
+        color: #000000 !important; /* Letras negras */
         font-weight: bold;
         border: 1px solid #e0d5a6 !important;
-        transition: transform 0.1s ease-in-out;
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Efecto suavizado */
     }
 
-    /* Efecto Rebote al tocar */
+    /* Efecto Rebote al hacer clic (Active) */
     div.stButton > button:active {
-        transform: scale(0.92);
+        transform: scale(0.92); /* Se encoge un poco */
+    }
+    
+    /* Efecto al pasar el mouse */
+    div.stButton > button:hover {
+        border: 1px solid #000000 !important;
+        background-color: #ffe88a !important; /* Un tono más fuerte al pasar el mouse */
     }
 
-    /* Inputs numéricos sin flechas */
+    /* Métrica en Negro para que combine */
+    div[data-testid="stMetricValue"] { 
+        font-size: 45px; 
+        color: #000000 !important; 
+    }
+
+    /* Eliminar flechas de inputs */
     input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
         -webkit-appearance: none; margin: 0;
     }
@@ -88,45 +66,21 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- INICIALIZACIÓN DE ESTADOS ---
-if 'resultado' not in st.session_state:
-    st.session_state.resultado = None
-if 'detalle' not in st.session_state:
-    st.session_state.detalle = ""
-
-# --- LOGO CHAMPLITTE ---
+# --- LOGO CHAMPLITTE (Pequeño) ---
 nombre_imagen = "champlitte.jpg"
-ruta_imagen = os.path.join(os.path.dirname(__file__), nombre_imagen)
+ruta_actual = os.path.dirname(__file__)
+ruta_imagen = os.path.join(ruta_actual, nombre_imagen)
 
-col_logo, _ = st.columns([1, 2])
-with col_logo:
-    try:
-        img = Image.open(ruta_imagen if os.path.exists(ruta_imagen) else nombre_imagen)
-        st.image(img, width=110)
-    except:
-        st.write("### CHAMPLITTE")
+try:
+    if os.path.exists(ruta_imagen):
+        img = Image.open(ruta_imagen)
+    else:
+        img = Image.open(nombre_imagen)
+    st.image(img, width=120) # Imagen pequeña
+except:
+    st.write("### PASTELERÍA CHAMPLITTE")
 
-# --- ÁREA DE RESULTADO (ARRIBA DENTRO DE BOX) ---
-if st.session_state.resultado is not None:
-    st.markdown(f"""
-        <div class="result-box">
-            <div class="result-label">Cantidad Calculada</div>
-            <div class="result-value">{st.session_state.resultado}</div>
-            <div style="font-size: 12px; color: #555;">{st.session_state.detalle}</div>
-        </div>
-    """, unsafe_allow_html=True)
-else:
-    # Box vacío o placeholder para mantener estructura
-    st.markdown("""
-        <div class="result-box" style="padding: 10px; opacity: 0.3;">
-            <div style="font-size: 14px;">Esperando cálculo...</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-# LÍNEA DIVISORIA NEGRA
-st.markdown('<div class="black-line"></div>', unsafe_allow_html=True)
-
-# --- LÓGICA ---
+# 3. Diccionario de productos
 productos = {
     "": 0,
     "BOLSA PAPEL CAFÉ #5 PQ/100": 0.832,
@@ -157,60 +111,59 @@ productos = {
     "TINTA EPSON 544 (CMYK)": 0.078,
 }
 
-def calcular_pue():
-    if st.session_state.producto_sel == "":
-        st.warning("⚠️ Selecciona un artículo.")
-        return
-    
-    peso_t = st.session_state.peso_input
-    if peso_t is None or peso_t <= 0:
-        st.warning("⚠️ Ingresa un peso válido.")
-        return
+def limpiar_pantalla():
+    st.session_state["peso_input"] = None
+    st.session_state["tara_input"] = None
+    st.session_state["activar_tara"] = False
+    st.session_state["producto_sel"] = ""
 
-    pue = productos[st.session_state.producto_sel]
-    tara_f = st.session_state.tara_input if (st.session_state.activar_tara and st.session_state.tara_input is not None) else 0.0
-    
-    peso_neto = peso_t - tara_f
-    
-    if peso_neto < 0:
-        st.error("Error: Tara mayor al peso.")
+# --- INTERFAZ ---
+st.write("## Calculadora de Unidades")
+
+opcion = st.selectbox("Artículo:", sorted(list(productos.keys())), key="producto_sel")
+
+col_a, col_b = st.columns(2)
+with col_a:
+    peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="peso_input")
+
+with col_b:
+    usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
+    if usar_tara:
+        peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="tara_input")
     else:
-        if st.session_state.producto_sel == "TINTA EPSON 544 (CMYK)":
-            res = (peso_neto - 0.030) / 0.078
-        else:
-            res = peso_neto / pue
+        peso_tara = 0.0
+
+st.write("") # Espaciador
+
+col1, col2 = st.columns([3, 1])
+with col1:
+    calcular = st.button("CALCULAR")
+with col2:
+    st.button("LIMPIAR", on_click=limpiar_pantalla)
+
+if calcular:
+    if opcion == "":
+        st.warning("⚠️ Selecciona un artículo.")
+    elif peso_total is None:
+        st.warning("⚠️ Ingresa el peso total.")
+    else:
+        pue = productos[opcion]
+        tara_final = peso_tara if peso_tara is not None else 0.0
+        peso_neto = peso_total - tara_final
         
-        st.session_state.resultado = f"{res:.2f}"
-        txt_tara = f" - {tara_f:.3f}" if st.session_state.activar_tara else ""
-        st.session_state.detalle = f"Fórmula: ({peso_t:.3f}{txt_tara}) / {pue}"
+        if peso_neto < 0:
+            st.error("Error: La tara es mayor al peso total.")
+        else:
+            if opcion == "TINTA EPSON 544 (CMYK)":
+                resultado = (peso_neto - 0.030) / 0.078
+            else:
+                resultado = peso_neto / pue
 
-def limpiar():
-    st.session_state.peso_input = None
-    st.session_state.tara_input = None
-    st.session_state.activar_tara = False
-    st.session_state.producto_sel = ""
-    st.session_state.resultado = None
-    st.session_state.detalle = ""
-
-# --- CAPTURA DE DATOS ---
-st.selectbox("Selecciona artículo:", sorted(list(productos.keys())), key="producto_sel")
-
-col_p1, col_p2 = st.columns(2)
-with col_p1:
-    st.number_input("Peso Total:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="peso_input")
-
-with col_p2:
-    st.checkbox("Descontar Tara", key="activar_tara")
-    if st.session_state.activar_tara:
-        st.number_input("Peso Tara:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="tara_input")
-
-st.write("###")
-
-col_btn1, col_btn2 = st.columns([3, 1])
-with col_btn1:
-    st.button("CALCULAR", on_click=calcular_pue)
-with col_btn2:
-    st.button("LIMPIAR", on_click=limpiar)
+            st.divider()
+            st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
+            
+            txt_formula = f"({peso_total:.3f} - {tara_final:.3f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
+            st.caption(f"Fórmula: {txt_formula}")
 
 st.markdown("---")
-st.caption("v1.9 - Herramienta Interna Champlitte")
+st.caption("v1.7 - Champlitte")
