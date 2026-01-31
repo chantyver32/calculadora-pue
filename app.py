@@ -9,23 +9,14 @@ st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="center
 st.markdown(
     """
     <style>
-    /* Fondo Blanco Puro */
-    .stApp {
-        background-color: #FFFFFF;
-    }
-    
-    /* Forzar texto en negro */
+    .stApp { background-color: #FFFFFF; }
     .stApp, p, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {
         color: #000000 !important;
     }
-
-    /* Ocultar elementos de Streamlit */
     header[data-testid="stHeader"], footer {
         visibility: hidden !important;
         height: 0;
     }
-
-    /* Estilo de los Botones */
     div.stButton > button {
         width: 100%;
         border-radius: 12px;
@@ -36,30 +27,19 @@ st.markdown(
         border: 1px solid #e0d5a6 !important;
         transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
-
-    /* Efecto Rebote al hacer clic (Active) */
-    div.stButton > button:active {
-        transform: scale(0.92);
-    }
-    
-    /* Efecto al pasar el mouse */
+    div.stButton > button:active { transform: scale(0.92); }
     div.stButton > button:hover {
         border: 1px solid #000000 !important;
         background-color: #ffe88a !important;
     }
-
-    /* Métrica en Negro */
     div[data-testid="stMetricValue"] { 
         font-size: 45px; 
         color: #000000 !important; 
     }
-
-    /* Eliminar flechas de inputs */
     input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
         -webkit-appearance: none; margin: 0;
     }
     input[type=number] { -moz-appearance: textfield; }
-    
     .block-container { padding-top: 1.5rem !important; }
     </style>
     """, 
@@ -82,7 +62,7 @@ except:
 
 # 3. Diccionario de productos
 productos = {
-    "": 0,
+    "--- SELECCIONA UN ARTÍCULO ---": 0,
     "BOLSA PAPEL CAFÉ #5 PQ/100": 0.832,
     "BOLSA PAPEL CAFÉ #6 PQ/100": 0.870,
     "BOLSA PAPEL CAFÉ #14 PQ/100": 1.364,
@@ -109,7 +89,7 @@ productos = {
     "ETIQUETA BLANCA ADH 13 X 19 PQ": 0.050,
     "HOJAS BLANCAS PAQ/500": 2.146,
     "TINTA EPSON 544 (CMYK)": 0.078,
-    # --- PRODUCTOS CON PUE 1.0 (CONTEO DIRECTO) ---
+    # --- PRODUCTOS CON PUE 1.0 ---
     "AGUA CIEL 20 LT": 1.0,
     "AZÚCAR REFINADA KG": 1.0,
     "BOLSA CAMISETA LOGO CH KG": 1.0,
@@ -138,22 +118,21 @@ def limpiar_pantalla():
     st.session_state["peso_input"] = None
     st.session_state["tara_input"] = None
     st.session_state["activar_tara"] = False
-    st.session_state["producto_sel"] = ""
+    st.session_state["producto_sel"] = "--- SELECCIONA UN ARTÍCULO ---"
 
 # --- INTERFAZ ---
 st.write("## Calculadora de PUE")
 
-opcion = st.selectbox("Artículo:", sorted(list(productos.keys())), key="producto_sel")
+opciones_lista = sorted(list(productos.keys()))
+opcion = st.selectbox("Artículo:", opciones_lista, key="producto_sel")
 
 col_a, col_b = st.columns(2)
 with col_a:
-    # Agregado step=0.0001 para permitir alta precisión decimal
     peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.4f", step=0.0001, value=None, placeholder="0.0000", key="peso_input")
 
 with col_b:
     usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
     if usar_tara:
-        # Agregado step=0.0001 para permitir alta precisión decimal en la tara
         peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.4f", step=0.0001, value=None, placeholder="0.0000", key="tara_input")
     else:
         peso_tara = 0.0
@@ -162,12 +141,13 @@ st.write("")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    calcular = st.button("CALCULAR")
+    btn_calcular = st.button("CALCULAR")
 with col2:
     st.button("LIMPIAR", on_click=limpiar_pantalla)
 
-if calcular:
-    if opcion == "":
+# --- LÓGICA DE CÁLCULO UNIFICADA ---
+if btn_calcular:
+    if opcion == "--- SELECCIONA UN ARTÍCULO ---" or opcion == "":
         st.warning("⚠️ Selecciona un artículo.")
     elif peso_total is None:
         st.warning("⚠️ Ingresa el peso total.")
@@ -179,46 +159,32 @@ if calcular:
         if peso_neto < 0:
             st.error("Error: La tara es mayor al peso total.")
         else:
+            # Alerta cuadro rojo si PUE es 1.0
+            if pue == 1.0:
+                st.error("📢 El artículo se pesa por pieza, kilo o litro.")
+            
+            # Lógica especial Tinta o Normal
             if opcion == "TINTA EPSON 544 (CMYK)":
+                # La tinta resta el envase (.030) además de la tara si existiera
                 resultado = (peso_neto - 0.030) / 0.078
+                if (peso_neto - 0.030) < 0:
+                    st.error("Error: El peso neto es menor al envase de la tinta (0.030).")
+                    resultado = None
             else:
                 resultado = peso_neto / pue
 
-            st.divider()
-            st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
-            
-            # Mostrar la fórmula con 4 decimales para mayor claridad
-            txt_formula = f"({peso_total:.4f} - {tara_final:.4f}) / {pue}" if usar_tara else f"{peso_total:.4f} / {pue}"
-            st.caption(f"Fórmula: {txt_formula}")
-
-# 4. Lógica de cálculo y Alerta de PUE = 1
-if calcular:
-    if opcion == "--- SELECCIONA UN ARTÍCULO ---":
-        st.warning("⚠️ Por favor, selecciona un artículo de la lista.")
-    elif peso_kg is None:
-        st.warning("⚠️ Por favor, ingresa el peso.")
-    else:
-        divisor = productos[opcion]
-        
-        # MOSTRAR CUADRO ROJO SI EL PUE ES 1
-        if divisor == 1.0:
-            st.error("📢 El artículo se pesa por pieza, kilo o litro.")
-        
-        # Lógica de la Tinta Epson
-        if opcion == "TINTA EPSON 544 (CMYK)":
-            peso_ajustado = peso_kg - 0.030
-            if peso_ajustado < 0:
-                st.error("Error: El peso es menor al envase (0.030).")
-                resultado = None
-            else:
-                resultado = peso_ajustado / 0.078
-        else:
-            resultado = peso_kg / divisor
-
-        if resultado is not None:
-            st.divider()
-            st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
-            st.caption(f"PUE utilizado: {divisor}")
+            if resultado is not None:
+                st.divider()
+                st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
+                
+                # Fórmula informativa
+                if usar_tara:
+                    txt_formula = f"({peso_total:.4f} - {tara_final:.4f}) / {pue}"
+                else:
+                    txt_formula = f"{peso_total:.4f} / {pue}"
+                
+                st.caption(f"Fórmula utilizada: {txt_formula}")
+                st.caption(f"PUE utilizado: {pue}")
 
 st.markdown("---")
-st.caption("v1.0")
+st.caption("v1.0 - Champlitte 2026")
