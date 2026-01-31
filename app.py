@@ -5,18 +5,18 @@ import os
 # 1. Configuración de página
 st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
 
-# 2. CSS Avanzado: Fondo, Colores y Estética
+# 2. CSS: Fondo Blanco, Texto Negro y Botones
 st.markdown(
     """
     <style>
-    /* Fondo crema muy suave */
+    /* Fondo Blanco Puro */
     .stApp {
-        background-color: #FFFDF0;
+        background-color: #FFFFFF;
     }
     
-    /* Forzar color de texto negro para máxima legibilidad */
+    /* Texto en Negro */
     .stApp, p, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {
-        color: #1A1A1A !important;
+        color: #000000 !important;
     }
 
     /* Ocultar elementos de Streamlit Cloud */
@@ -25,13 +25,13 @@ st.markdown(
         height: 0;
     }
 
-    /* Eliminar flechas en inputs numéricos */
+    /* Quitar flechas de los números */
     input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
         -webkit-appearance: none; margin: 0;
     }
     input[type=number] { -moz-appearance: textfield; }
 
-    /* Estilo botón Calcular */
+    /* Botón CALCULAR Rojo Champlitte */
     div.stButton > button:first-child {
         width: 100%;
         border-radius: 10px;
@@ -39,36 +39,40 @@ st.markdown(
         background-color: #B22222;
         color: white !important;
         font-weight: bold;
-        border: none;
     }
     
-    /* Estilo botón Limpiar */
+    /* Botón LIMPIAR Gris */
     div[data-testid="column"] .stButton > button {
         background-color: #6c757d;
         color: white !important;
     }
 
-    /* Ajuste de métricas */
+    /* Métrica en Rojo */
     div[data-testid="stMetricValue"] { 
         font-size: 45px; 
         color: #B22222 !important; 
     }
-    
-    .block-container { padding-top: 1rem !important; }
     </style>
     """, 
     unsafe_allow_html=True
 )
 
-# --- LOGO CHAMPLITTE (CENTRADO) ---
-col_logo, _ = st.columns([2, 1])
-with col_logo:
-    try:
-        # Asegúrate de que el archivo 'champlitte.jpeg' esté en la misma carpeta
-        img = Image.open("champlitte.jpg")
-        st.image(img, width=300)
-    except FileNotFoundError:
-        st.error("No se encontró el archivo 'champlitte.jpeg'. Asegúrate de subirlo.")
+# --- LOGO CHAMPLITTE (Más pequeño) ---
+nombre_imagen = "champlitte.jpeg"
+# Intentamos cargar la imagen desde la ruta del script
+ruta_actual = os.path.dirname(__file__)
+ruta_imagen = os.path.join(ruta_actual, nombre_imagen)
+
+try:
+    if os.path.exists(ruta_imagen):
+        img = Image.open(ruta_imagen)
+    else:
+        img = Image.open(nombre_imagen)
+    
+    # Reducimos el width a 150 para que sea pequeña
+    st.image(img, width=150)
+except:
+    st.write("### PASTELERÍA CHAMPLITTE")
 
 # 3. Diccionario de productos
 productos = {
@@ -101,7 +105,6 @@ productos = {
     "TINTA EPSON 544 (CMYK)": 0.078,
 }
 
-# Función para resetear
 def limpiar_pantalla():
     st.session_state["peso_input"] = None
     st.session_state["tara_input"] = None
@@ -109,46 +112,28 @@ def limpiar_pantalla():
     st.session_state["producto_sel"] = ""
 
 # --- INTERFAZ ---
-st.write("### Calculadora de Unidades")
+st.write("## Calculadora de Unidades")
 
-# 1. Selección de producto
 opcion = st.selectbox("Selecciona el artículo:", sorted(list(productos.keys())), key="producto_sel")
 
-# 2. Entrada de Pesos
 col_a, col_b = st.columns(2)
-
 with col_a:
-    peso_total = st.number_input(
-        "Peso Total:", 
-        min_value=0.0, 
-        format="%.3f", 
-        value=None, 
-        placeholder="0.000",
-        key="peso_input"
-    )
+    # value=None hace que el campo inicie vacío (con el placeholder invisible)
+    peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="peso_input")
 
 with col_b:
     usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
     if usar_tara:
-        peso_tara = st.number_input(
-            "Peso Tara:", 
-            min_value=0.0, 
-            format="%.3f", 
-            value=None, 
-            placeholder="0.000",
-            key="tara_input"
-        )
+        peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.3f", value=None, placeholder="0.000", key="tara_input")
     else:
         peso_tara = 0.0
 
-# 3. Botones
 col1, col2 = st.columns([3, 1])
 with col1:
     calcular = st.button("CALCULAR")
 with col2:
     st.button("LIMPIAR", on_click=limpiar_pantalla)
 
-# 4. Lógica de cálculo
 if calcular:
     if opcion == "":
         st.warning("⚠️ Selecciona un artículo.")
@@ -156,7 +141,6 @@ if calcular:
         st.warning("⚠️ Ingresa el peso total.")
     else:
         pue = productos[opcion]
-        # Si la tara es None, se cuenta como 0
         tara_final = peso_tara if peso_tara is not None else 0.0
         peso_neto = peso_total - tara_final
         
@@ -171,9 +155,8 @@ if calcular:
             st.divider()
             st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
             
-            # Detalle del cálculo para auditoría rápida
             txt_formula = f"({peso_total:.3f} - {tara_final:.3f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
-            st.caption(f"Fórmula: {txt_formula}")
+            st.caption(f"Fórmula aplicada: {txt_formula}")
 
 st.markdown("---")
-st.caption("v1.4 - Herramienta Interna Champlitte")
+st.caption("v1.6 - Herramienta Interna Champlitte")
