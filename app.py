@@ -190,7 +190,7 @@ if btn_calcular:
             # Mostrar resultado final
             if resultado is not None:
                 st.divider()
-                st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
+                st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.3f}")
                 st.caption(f"Fórmula utilizada: {txt_formula}")
                 if not es_tinta:
                     st.caption(f"PUE utilizado: {pue}")
