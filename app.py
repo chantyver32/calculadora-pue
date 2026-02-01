@@ -147,6 +147,4 @@ if btn_calcular:
             txt_formula = f"({peso_total:.3f} - {tara_final:.4f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
             st.caption(f"Fórmula utilizada: {txt_formula}")
             st.caption(f"PUE utilizado: {pue}")
-
-st.markdown("---")
 st.caption("v1.0 - Champlitte 2026")
