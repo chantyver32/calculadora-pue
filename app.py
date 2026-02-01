@@ -164,7 +164,7 @@ if btn_calcular:
                 st.error(" 📢 El artículo se cuenta por pieza, kilo o litro.")
             
             # Lógica especial Tinta o Normal
-            if opcion == "TINTA EPSON 544 (CMYK)":
+            if opcion == "TINTA EPSON 544 (CMYK) POR PZA A":
                 # La tinta resta el envase (.030) además de la tara si existiera
                 resultado = (peso_neto - 0.030) / 0.078
                 if (peso_neto - 0.030) < 0:
