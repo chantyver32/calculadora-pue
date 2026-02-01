@@ -5,7 +5,7 @@ import os
 # 1. Configuración de página
 st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
 
-# 2. CSS: Fondo Blanco, Botones con efecto rebote y letras negras
+# 2. CSS: Fondo Blanco, Botones y Estilos
 st.markdown(
     """
     <style>
@@ -36,10 +36,6 @@ st.markdown(
         font-size: 45px; 
         color: #000000 !important; 
     }
-    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
-        -webkit-appearance: none; margin: 0;
-    }
-    input[type=number] { -moz-appearance: textfield; }
     .block-container { padding-top: 1.5rem !important; }
     </style>
     """, 
@@ -89,7 +85,6 @@ productos = {
     "ETIQUETA BLANCA ADH 13 X 19 POR PQ M": 0.050,
     "HOJAS BLANCAS PQ/500 POR PZA A": 2.146,
     "TINTA EPSON 544 (CMYK) POR PZA A": 0.078,
-    # --- PRODUCTOS CON PUE 1.0 ---
     "AGUA CIEL 20 POR LT A": 1.0,
     "AZUCAR REFINADA POR KG A": 1.0,
     "BOLSA CAMISETA LOGO CH POR KG A": 1.0,
@@ -126,16 +121,25 @@ st.write("## Calculadora de PUE")
 opciones_lista = sorted(list(productos.keys()))
 opcion = st.selectbox("Artículo:", opciones_lista, key="producto_sel")
 
+# Variable para identificar si es tinta
+es_tinta = (opcion == "TINTA EPSON 544 (CMYK) POR PZA A")
+
 col_a, col_b = st.columns(2)
 with col_a:
     peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.3f", step=0.001, value=None, placeholder="0.000", key="peso_input")
 
 with col_b:
-    usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
-    if usar_tara:
-        peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.4f", step=0.0001, value=None, placeholder="0.0000", key="tara_input")
+    # Condición para ocultar tara si es tinta
+    if not es_tinta:
+        usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
+        if usar_tara:
+            peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.4f", step=0.0001, value=None, placeholder="0.0000", key="tara_input")
+        else:
+            peso_tara = 0.0
     else:
+        # Si es tinta, ignoramos la tara manual
         peso_tara = 0.0
+        usar_tara = False
 
 st.write("") 
 
@@ -145,7 +149,7 @@ with col1:
 with col2:
     st.button("LIMPIAR", on_click=limpiar_pantalla)
 
-# --- LÓGICA DE CÁLCULO UNIFICADA ---
+# --- LÓGICA DE CÁLCULO ---
 if btn_calcular:
     if opcion == "":
         st.warning(" ⚠️ Selecciona el artículo.")
@@ -156,26 +160,30 @@ if btn_calcular:
         tara_final = peso_tara if peso_tara is not None else 0.0
         peso_neto = peso_total - tara_final
         
+        resultado = None
+        txt_formula = ""
+
         if peso_neto < 0:
             st.error(" 📢 La tara es mayor al peso total.")
         else:
-            # Alerta cuadro rojo si PUE es 1.0
             if pue == 1.0:
                 st.error(" 📢 El artículo se cuenta por pieza, kilo o litro.")
             
-            resultado = None
-            
-            # Lógica especial Tinta
-            if opcion == "TINTA EPSON 544 (CMYK) POR PZA A":
+            # LÓGICA ESPECIAL TINTA
+            if es_tinta:
                 peso_ajustado = peso_neto - 0.030
                 if peso_ajustado < 0:
                     st.error("📢 El peso neto es menor al envase de la tinta (0.030).")
                 else:
                     resultado = peso_ajustado / 0.078
-            # Lógica para productos normales
+                    # Texto de la fórmula solicitado
+                    txt_formula = f"({peso_total:.3f} - 0.030) / 0.078"
+            
+            # LÓGICA PRODUCTOS NORMALES
             else:
                 if pue > 0:
                     resultado = peso_neto / pue
+                    txt_formula = f"({peso_total:.3f} - {tara_final:.4f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
                 else:
                     st.warning("⚠️ El artículo seleccionado no tiene un divisor válido.")
 
@@ -183,11 +191,9 @@ if btn_calcular:
             if resultado is not None:
                 st.divider()
                 st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
-                
-                # Fórmula informativa
-                txt_formula = f"({peso_total:.3f} - {tara_final:.4f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
                 st.caption(f"Fórmula utilizada: {txt_formula}")
-                st.caption(f"PUE utilizado: {pue}")
+                if not es_tinta:
+                    st.caption(f"PUE utilizado: {pue}")
 
 st.markdown("---")
-st.caption("v1.0 - Champlitte 2026")
+st.caption("v1.1 - Champlitte 2026")
