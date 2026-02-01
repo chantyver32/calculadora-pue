@@ -175,7 +175,7 @@ if btn_calcular:
             # Lógica para productos normales
             else:
                 if pue > 0:
-                    resultado = peso_ajustado / pue
+                    resultado = peso_neto / pue
                 else:
                     st.warning("⚠️ El artículo seleccionado no tiene un divisor válido.")
 
