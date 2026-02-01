@@ -171,7 +171,7 @@ if btn_calcular:
                 if peso_ajustado < 0:
                     st.error("📢 El peso neto es menor al envase de la tinta (0.030).")
                 else:
-                    resultado = peso_ajustado / 0.078
+                    resultado = peso_neto - 0.030 / 0.078
             # Lógica para productos normales
             else:
                 if pue > 0:
