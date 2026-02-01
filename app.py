@@ -163,19 +163,29 @@ if btn_calcular:
             if pue == 1.0:
                 st.error(" 📢 El artículo se cuenta por pieza, kilo o litro.")
             
-            # Lógica especial Tinta o Normal
-            if opcion == "TINTA EPSON 544 (CMYK) POR PZA A":
-                # La tinta resta el envase (.030) además de la tara si existiera
-                resultado = (peso_neto - 0.030) / 0.078
-                if (peso_neto - 0.030) < 0:
-                    st.error(" 📢 El peso neto es menor al envase de la tinta (0.030).")
-                    resultado = None
-            else:
-                resultado = peso_neto / pue
+    # Lógica especial Tinta o Normal
+if opcion == "TINTA EPSON 544 (CMYK) POR PZA A":
+    peso_ajustado = peso_neto - 0.030
+    
+    # Validamos primero
+    if peso_ajustado < 0:
+        st.error("📢 El peso neto es menor al envase de la tinta (0.030).")
+        resultado = None
+    else:
+        # Calculamos solo si la validación pasa
+        resultado = peso_ajustado / 0.078
+else:
+    # Lógica para productos normales
+    if pue > 0:
+        resultado = peso_neto / pue
+    else:
+        st.warning("⚠️ El PUE debe ser mayor a cero.")
+        resultado = None
 
-            if resultado is not None:
-                st.divider()
-                st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
+# Mostrar resultado solo si es válido
+if resultado is not None:
+    st.divider()
+    st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
                 
                 # Fórmula informativa
                 if usar_tara:
