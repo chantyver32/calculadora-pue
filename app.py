@@ -148,27 +148,27 @@ with col2:
 # --- LÓGICA DE CÁLCULO UNIFICADA ---
 if btn_calcular:
     if opcion == "" or opcion == "":
-        st.warning("⚠️ Selecciona un artículo.")
+        st.warning(" ⚠️ Selecciona el artículo.")
     elif peso_total is None:
-        st.warning("⚠️ Ingresa el peso total.")
+        st.warning(" ⚠️ Ingresa el peso total.")
     else:
         pue = productos[opcion]
         tara_final = peso_tara if peso_tara is not None else 0.0
         peso_neto = peso_total - tara_final
         
         if peso_neto < 0:
-            st.error("Error: La tara es mayor al peso total.")
+            st.error(" 📢 La tara es mayor al peso total.")
         else:
             # Alerta cuadro rojo si PUE es 1.0
             if pue == 1.0:
-                st.error("📢 El artículo se pesa por pieza, kilo o litro.")
+                st.error(" 📢 El artículo se cuenta por pieza, kilo o litro.")
             
             # Lógica especial Tinta o Normal
             if opcion == "TINTA EPSON 544 (CMYK)":
                 # La tinta resta el envase (.030) además de la tara si existiera
                 resultado = (peso_neto - 0.030) / 0.078
                 if (peso_neto - 0.030) < 0:
-                    st.error("Error: El peso neto es menor al envase de la tinta (0.030).")
+                    st.error(" 📢 El peso neto es menor al envase de la tinta (0.030).")
                     resultado = None
             else:
                 resultado = peso_neto / pue
