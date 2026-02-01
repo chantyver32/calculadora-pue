@@ -147,7 +147,7 @@ with col2:
 
 # --- LÓGICA DE CÁLCULO UNIFICADA ---
 if btn_calcular:
-    if opcion == "" or opcion == "":
+    if opcion == "":
         st.warning(" ⚠️ Selecciona el artículo.")
     elif peso_total is None:
         st.warning(" ⚠️ Ingresa el peso total.")
@@ -163,36 +163,29 @@ if btn_calcular:
             if pue == 1.0:
                 st.error(" 📢 El artículo se cuenta por pieza, kilo o litro.")
             
-    # Lógica especial Tinta o Normal
-if opcion == "TINTA EPSON 544 (CMYK) POR PZA A":
-    peso_ajustado = peso_neto - 0.030
-    
-    # Validamos primero
-    if peso_ajustado < 0:
-        st.error("📢 El peso neto es menor al envase de la tinta (0.030).")
-        resultado = None
-    else:
-        # Calculamos solo si la validación pasa
-        resultado = peso_ajustado / 0.078
-else:
-    # Lógica para productos normales
-    if pue > 0:
-        resultado = peso_neto / pue
-    else:
-        st.warning("⚠️ El PUE debe ser mayor a cero.")
-        resultado = None
+            resultado = None
+            
+            # Lógica especial Tinta
+            if opcion == "TINTA EPSON 544 (CMYK) POR PZA A":
+                peso_ajustado = peso_neto - 0.030
+                if peso_ajustado < 0:
+                    st.error("📢 El peso neto es menor al envase de la tinta (0.030).")
+                else:
+                    resultado = peso_ajustado / 0.078
+            # Lógica para productos normales
+            else:
+                if pue > 0:
+                    resultado = peso_neto / pue
+                else:
+                    st.warning("⚠️ El artículo seleccionado no tiene un divisor válido.")
 
-# Mostrar resultado solo si es válido
-if resultado is not None:
-    st.divider()
-    st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
+            # Mostrar resultado final
+            if resultado is not None:
+                st.divider()
+                st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
                 
                 # Fórmula informativa
-                if usar_tara:
-                    txt_formula = f"({peso_total:.3f} - {tara_final:.4f}) / {pue}"
-                else:
-                    txt_formula = f"{peso_total:.3f} / {pue}"
-                
+                txt_formula = f"({peso_total:.3f} - {tara_final:.4f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
                 st.caption(f"Fórmula utilizada: {txt_formula}")
                 st.caption(f"PUE utilizado: {pue}")
 
