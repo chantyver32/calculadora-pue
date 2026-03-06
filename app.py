@@ -186,49 +186,56 @@ if st.button("🗑️ REINICIAR TODO EL DÍA"):
     guardar_db(datos)
     st.rerun()
 
-# --- SECCIÓN DE CONSULTA COMPARATIVA ---
+# --- SECCIÓN DE CONSULTA DE INVENTARIO ACTUALIZADO ---
 st.divider()
-st.subheader("🔍 Comparativa: Ayer vs Hoy")
+st.subheader("🔍 Resumen de Inventario: Ayer vs Hoy")
 
-# Calculamos la fecha de ayer
+# Calculamos fechas
 ayer_obj = datetime.now() - timedelta(days=1)
 ayer = ayer_obj.strftime('%Y-%m-%d')
 
-# Extraemos todos los productos que han tenido movimiento o tienen registro inicial
-productos_con_datos = set(
+# Obtenemos la lista de productos que tienen algún registro hoy o ayer
+productos_activos = set(
     list(datos.get("iniciales", {}).get(hoy, {}).keys()) + 
-    list(datos.get("iniciales", {}).get(ayer, {}).keys())
+    list(datos.get("totales", {}).get(hoy, {}).keys())
 )
 
-if productos_con_datos:
-    comparativa = []
-    for art in productos_con_datos:
-        # Cantidad Ayer: Lo que había al inicio de ayer (o puedes usar el saldo final de ayer si prefieres)
-        cant_ayer = datos.get("iniciales", {}).get(ayer, {}).get(art, 0.0)
+if productos_activos:
+    tabla_final = []
+    for art in productos_activos:
+        # 1. Cantidad que tenía (Inventario inicial de hoy)
+        cant_inicial_hoy = datos.get("iniciales", {}).get(hoy, {}).get(art, 0.0)
         
-        # Cantidad Hoy: Lo que hay al inicio de hoy
-        cant_hoy = datos.get("iniciales", {}).get(hoy, {}).get(art, 0.0)
+        # 2. Lo que pesé hoy (Consumo registrado)
+        lo_que_pese = datos.get("totales", {}).get(hoy, {}).get(art, 0.0)
         
-        # Diferencia
-        dif = cant_hoy - cant_ayer
+        # 3. Lo que tengo ahora (Saldo)
+        saldo_ahora = cant_inicial_hoy - lo_que_pese
         
-        comparativa.append({
+        tabla_final.append({
             "PRODUCTO": art,
-            "CANTIDAD AYER": round(cant_ayer, 2),
-            "CANTIDAD HOY": round(cant_hoy, 2),
-            "DIFERENCIA": round(dif, 2),
+            "CANT. INICIAL (TENÍA)": round(cant_inicial_hoy, 2),
+            "PESAJE HOY (CONSUMO)": round(lo_que_pese, 2),
+            "SALDO (TENGO AHORA)": round(saldo_ahora, 2),
             "FECHA": hoy
         })
     
-    # Mostrar tabla
-    if comparativa:
-        df_comp = pd.DataFrame(comparativa)
-        # Estilo opcional para resaltar diferencias negativas (consumos)
-        st.dataframe(df_comp, use_container_width=True, hide_index=True)
-    else:
-        st.info("No hay datos suficientes para comparar con el día anterior.")
+    # Crear DataFrame
+    df_resumen = pd.DataFrame(tabla_final)
+    
+    # Aplicar un poco de color para que sea fácil de leer
+    def resaltar_saldo(val):
+        color = 'red' if val < 0 else 'black'
+        return f'color: {color}; font-weight: bold'
+
+    # Mostrar la tabla con estilo
+    st.dataframe(
+        df_resumen.style.map(resaltar_saldo, subset=['SALDO (TENGO AHORA)']),
+        use_container_width=True,
+        hide_index=True
+    )
 else:
-    st.info("Aún no hay registros de inventario para comparar.")
+    st.info("No se han registrado movimientos ni inventarios para el día de hoy.")
 
 st.caption("v2.8 | Champlitte - Control de Insumos")
 
