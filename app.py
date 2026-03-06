@@ -1,26 +1,21 @@
 import streamlit as st
 import pandas as pd
-from PIL import Image
 import os
 import json
 from datetime import datetime, timedelta
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="PUE Champlitte v2.8.1", page_icon="🍰", layout="centered")
+st.set_page_config(page_title="PUE Champlitte v2.9", page_icon="🍰", layout="centered")
 
 # 2. CSS MEJORADO
 st.markdown(
     """
     <style>
     .stApp { background-color: #FFFFFF; }
-    
-    h1, h2, h3, p, label, .stMarkdown, span {
-        color: #000000 !important;
-    }
-
+    h1, h2, h3, p, label, .stMarkdown, span { color: #000000 !important; }
     header[data-testid="stHeader"] { visibility: hidden; }
 
-    /* CAMPOS DE ENTRADA */
+    /* Estilo de los Inputs */
     input {
         color: #FFFFFF !important; 
         background-color: #444444 !important;
@@ -30,40 +25,22 @@ st.markdown(
         border: 2px solid #b08d15 !important;
     }
     
-    /* BOTONES ESTILO CHAMPLITTE */
+    /* Botones */
     div.stButton > button {
         width: 100%;
         border-radius: 10px;
-        height: 3.5em;
         background-color: #fff2bd !important;
         color: #000000 !important;
         font-weight: bold;
         border: 1px solid #e0d5a6 !important;
-        transition: 0.3s;
     }
-    
-    div.stButton > button:hover {
-        background-color: #fce895 !important;
-        border: 1px solid #b08d15 !important;
-    }
-
-    .resumen-caja {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 15px;
-        border: 2px solid #f0e6bc;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
-        margin: 20px 0px;
-    }
-    
-    .metric-total { font-size: 26px; font-weight: 900; color: #b08d15; }
     </style>
     """, 
     unsafe_allow_html=True
 )
 
-# --- LÓGICA DE DATOS ---
-DB_FILE = "data_champlitte_v28.json"
+# --- LÓGICA DE BASE DE DATOS ---
+DB_FILE = "data_champlitte_v29.json"
 
 def cargar_db():
     if os.path.exists(DB_FILE):
@@ -75,12 +52,8 @@ def cargar_db():
 def guardar_db(datos):
     with open(DB_FILE, "w") as f: json.dump(datos, f, indent=4)
 
-# --- LOGO ---
-if os.path.exists("champlitte.jpg"):
-    st.image("champlitte.jpg", width=120)
-else:
-    st.title("🍰 CHAMPLITTE")
-
+datos = cargar_db()
+hoy = datetime.now().strftime('%Y-%m-%d')
 productos = {
     "": 0, "BOLSA PAPEL CAFE #5": 0.832, "BOLSA PAPEL CAFE #6": 0.870,
     "BOLSA PAPEL CAFE #14": 1.364, "BOLSA PAPEL CAFE #20": 1.616,
@@ -97,109 +70,83 @@ productos = {
     "HOJAS BLANCAS PQ/500": 2.146, "TINTA EPSON 544": 0.078
 }
 
-# --- INTERFAZ PRINCIPAL ---
-datos = cargar_db()
-hoy = datetime.now().strftime('%Y-%m-%d')
+# --- CREACIÓN DE PESTAÑAS ---
+tab_registro, tab_resumen = st.tabs(["⚖️ REGISTRO DE PESO", "📋 CORTE DEL DÍA"])
 
-if st.button("🔄 LIMPIAR / BUSCAR OTRO"):
-    st.session_state.p_sel = ""
-    st.rerun()
-
-opcion = st.selectbox("SELECCIONA ARTÍCULO:", sorted(list(productos.keys())), key="p_sel")
-
-if opcion != "":
-    if hoy not in datos["iniciales"]: datos["iniciales"][hoy] = {}
-    if opcion not in datos["iniciales"][hoy]:
-        ayer = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        ini_ayer = datos.get("iniciales", {}).get(ayer, {}).get(opcion, 0.0)
-        tot_ayer = datos.get("totales", {}).get(ayer, {}).get(opcion, 0.0)
-        datos["iniciales"][hoy][opcion] = max(0.0, ini_ayer - tot_ayer)
-        guardar_db(datos)
-
-    val_ini = datos["iniciales"][hoy][opcion]
+# --- PESTAÑA 1: REGISTRO ---
+with tab_registro:
+    if os.path.exists("champlitte.jpg"):
+        st.image("champlitte.jpg", width=100)
     
-    with st.expander("📝 Ajustar Inventario Inicial"):
-        nuevo_ini = st.number_input("Cantidad actual:", value=float(val_ini))
-        if st.button("GUARDAR INICIAL"):
-            datos["iniciales"][hoy][opcion] = nuevo_ini
+    if st.button("🔄 LIMPIAR PARA OTRO PRODUCTO"):
+        st.session_state.p_sel = ""
+        st.rerun()
+
+    opcion = st.selectbox("ARTÍCULO:", sorted(list(productos.keys())), key="p_sel")
+
+    if opcion != "":
+        # Manejo de Inventario Inicial
+        if hoy not in datos["iniciales"]: datos["iniciales"][hoy] = {}
+        if opcion not in datos["iniciales"][hoy]:
+            ayer = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            ini_ayer = datos.get("iniciales", {}).get(ayer, {}).get(opcion, 0.0)
+            tot_ayer = datos.get("totales", {}).get(ayer, {}).get(opcion, 0.0)
+            datos["iniciales"][hoy][opcion] = max(0.0, ini_ayer - tot_ayer)
+            guardar_db(datos)
+
+        pue = productos[opcion]
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            peso_total = st.number_input("Peso Báscula:", value=0.0, format="%.3f")
+        with col2:
+            tara = st.radio("Tara:", ["Ninguna", "Contenedor (0.045)", "Bisagra (0.016)"])
+        
+        if st.button("REGISTRAR"):
+            if peso_total > 0:
+                tara_val = 0.045 if "Cont" in tara else (0.016 if "Bis" in tara else 0)
+                p_neto = peso_total - (0.030 if "TINTA" in opcion else tara_val)
+                
+                if p_neto > 0:
+                    cant_res = p_neto / pue
+                    datos["historial"].append({"fecha": hoy, "art": opcion, "cant": round(cant_res, 2)})
+                    if hoy not in datos["totales"]: datos["totales"][hoy] = {}
+                    datos["totales"][hoy][opcion] = datos["totales"][hoy].get(opcion, 0.0) + cant_res
+                    guardar_db(datos)
+                    st.success(f"Registrado correctamente.")
+                    st.rerun()
+
+# --- PESTAÑA 2: RESUMEN DEL DÍA ---
+with tab_resumen:
+    st.subheader(f"Resumen General - {hoy}")
+    
+    # Filtrar historial de hoy
+    df_h = pd.DataFrame(datos.get("historial", []))
+    
+    # Mostrar tabla detallada de todos los productos que han tenido movimiento
+    resumen_list = []
+    lista_articulos = datos["iniciales"].get(hoy, {}).keys()
+    
+    for art in lista_articulos:
+        p_ini = datos["iniciales"][hoy].get(art, 0.0)
+        p_hoy = datos["totales"].get(hoy, {}).get(art, 0.0)
+        if p_ini > 0 or p_hoy > 0:
+            resumen_list.append({
+                "PRODUCTO": art,
+                "INICIAL": round(p_ini, 2),
+                "CONSUMIDO": round(p_hoy, 2),
+                "DISPONIBLE": round(p_ini - p_hoy, 2)
+            })
+
+    if resumen_list:
+        st.table(pd.DataFrame(resumen_list))
+        
+        if st.button("🗑️ REINICIAR DÍA (BORRAR TODO)"):
+            datos["totales"][hoy] = {}
+            datos["historial"] = [h for h in datos["historial"] if h["fecha"] != hoy]
             guardar_db(datos)
             st.rerun()
-
-    st.write(f"### ⚖️ Registro: {opcion}")
-    pue = productos[opcion]
-    
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        peso_total = st.number_input("Peso Báscula (kg):", value=0.0, format="%.3f")
-    with col_p2:
-        t_cont = st.checkbox("Contenedor (0.045)")
-        t_bisag = st.checkbox("Bisagra (0.016)")
-
-    if st.button("REGISTRAR PESADA"):
-        if peso_total > 0:
-            # Lógica de tara
-            tara_calc = (0.045 if t_cont else 0) + (0.016 if t_bisag else 0)
-            extra_tara = 0.030 if "TINTA" in opcion else 0
-            tara_final = tara_calc + extra_tara
-            
-            p_neto = peso_total - tara_final
-            
-            if p_neto > 0:
-                cant_res = p_neto / pue
-                
-                # --- DESGLOSE DE OPERACIÓN (Solicitado) ---
-                st.info(f"""
-                **Cálculo realizado:**
-                1. **Peso Neto:** {peso_total:.3f} (Bruto) - {tara_final:.3f} (Tara) = **{p_neto:.3f} kg**
-                2. **Resultado:** {p_neto:.3f} kg / {pue} (PUE) = **{cant_res:.2f} unidades**
-                """)
-                
-                # Registro en DB
-                datos["historial"].append({
-                    "fecha": hoy, 
-                    "art": opcion, 
-                    "cant": round(cant_res, 2),
-                    "detalle": f"{peso_total:.3f}-{tara_final:.3f}/{pue}"
-                })
-                
-                if hoy not in datos["totales"]: datos["totales"][hoy] = {}
-                datos["totales"][hoy][opcion] = datos["totales"][hoy].get(opcion, 0.0) + cant_res
-                guardar_db(datos)
-                
-                st.success(f"Añadido: {cant_res:.2f}")
-                # st.rerun() # Quitamos el rerun automático para que se vea el desglose un momento
-            else:
-                st.error("El peso neto es menor o igual a cero. Revisa la báscula.")
-
-# --- TABLA DE OPERACIONES REALIZADAS ---
-st.divider()
-st.subheader("📊 Operaciones del Día")
-
-df_hist = pd.DataFrame(datos.get("historial", []))
-if not df_hist.empty:
-    df_hoy = df_hist[df_hist["fecha"] == hoy].copy()
-    if not df_hoy.empty:
-        resumen_dia = []
-        for art in df_hoy["art"].unique():
-            p_ini = datos["iniciales"].get(hoy, {}).get(art, 0.0)
-            p_hoy = datos["totales"].get(hoy, {}).get(art, 0.0)
-            resumen_dia.append({
-                "PRODUCTO": art,
-                "PESO INICIAL": round(p_ini, 2),
-                "CONSUMO HOY": round(p_hoy, 2),
-                "DIFERENCIA (SALDO)": round(p_ini - p_hoy, 2)
-            })
-        
-        st.table(pd.DataFrame(resumen_dia))
     else:
-        st.info("Sin movimientos hoy.")
-else:
-    st.info("Historial vacío.")
+        st.info("Aún no hay movimientos registrados hoy.")
 
-if st.button("🗑️ REINICIAR TODO EL DÍA"):
-    datos["totales"][hoy] = {}
-    datos["historial"] = [h for h in datos["historial"] if h["fecha"] != hoy]
-    guardar_db(datos)
-    st.rerun()
-
-st.caption("v2.8.1 | Champlitte - Control de Insumos")
+st.caption("v2.9 | Champlitte - Control de Insumos")
