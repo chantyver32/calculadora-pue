@@ -115,12 +115,17 @@ productos={
 
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    if "p_sel" in st.session_state:
+        del st.session_state["p_sel"]
+    st.session_state.reset_select += 1
     st.rerun()
 
 # SELECTOR
-opcion=st.selectbox("SELECCIONA ARTÍCULO",sorted(productos.keys()),key="p_sel")
+opcion = st.selectbox(
+    "SELECCIONA ARTÍCULO",
+    sorted(productos.keys()),
+    key=f"p_sel_{st.session_state.reset_select}"
+)
 
 # INVENTARIO
 if opcion!="":
