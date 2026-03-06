@@ -104,8 +104,7 @@ if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.tara_input = ""
     st.session_state.pue_input = ""
     st.session_state.ini_input = ""
-    st.experimental_rerun()
-
+    
 # ---------------------- SELECTOR ----------------------
 opcion = st.selectbox(
     "SELECCIONA ARTÍCULO", sorted(productos.keys()), 
