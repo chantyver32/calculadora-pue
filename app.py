@@ -10,6 +10,7 @@ st.set_page_config(page_title="PUE Champlitte v3.1", page_icon="🍰", layout="c
 # ---------------------- CSS ----------------------
 st.markdown("""
 <style>
+/* Fondo general de la app */
 .stApp { background-color: #FFFFFF; }
 
 /* Texto general */
@@ -18,13 +19,23 @@ h1, h2, h3, p, label, .stMarkdown, span { color:#000000 !important; }
 /* Ocultar header */
 header[data-testid="stHeader"] { visibility:hidden; }
 
-/* Inputs y textarea */
+/* Inputs y textarea: color blanco y fondo gris, sin cambios al hacer foco */
 input, textarea {
     color:#FFFFFF !important;
     background-color:#444444 !important;
     border-radius:10px !important;
     border:2px solid #b08d15 !important;
+    box-shadow:none !important;
 }
+
+/* Evitar que cambie el fondo al pasar mouse o escribir */
+input:focus, textarea:focus, input:hover, textarea:hover {
+    background-color:#444444 !important;
+    color:#FFFFFF !important;
+    box-shadow:none !important;
+}
+
+/* Placeholder */
 input::placeholder { color:#DDDDDD !important; }
 
 /* Inputs de Streamlit (BaseWeb) */
@@ -32,9 +43,18 @@ div[data-baseweb="input"] input {
     color:#FFFFFF !important; 
     background-color:#444444 !important; 
 }
+div[data-baseweb="input"] input:focus,
+div[data-baseweb="input"] input:hover {
+    background-color:#444444 !important;
+    color:#FFFFFF !important;
+    box-shadow:none !important;
+}
+
+/* Selectboxes */
 div[data-baseweb="select"] * { 
     font-size:14px !important; 
     cursor:pointer !important; 
+    background-color:#444444 !important;
 }
 
 /* Botones */
@@ -48,8 +68,6 @@ div.stButton > button {
     border:1px solid #e0d5a6 !important;
     box-shadow:none !important;
 }
-
-/* Evitar hover y focus en botones */
 div.stButton > button:hover,
 div.stButton > button:focus,
 div.stButton > button:active {
@@ -71,7 +89,6 @@ div.stButton > button:active {
 }
 </style>
 """, unsafe_allow_html=True)
-
 # ---------------------- BASE DE DATOS ----------------------
 DB_FILE = "data_champlitte_v31.json"
 
