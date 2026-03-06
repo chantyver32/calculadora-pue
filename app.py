@@ -27,34 +27,32 @@ input, textarea {
     border:2px solid #b08d15 !important;
     box-shadow:none !important;
 }
-
-/* Evitar que cambie el fondo al pasar mouse o escribir */
 input:focus, textarea:focus, input:hover, textarea:hover {
-    background-color:#b08d15 !important;
-    color:#b08d15 !important;
+    background-color:#444444 !important;
+    color:#FFFFFF !important;
     box-shadow:none !important;
 }
 
 /* Placeholder */
 input::placeholder { color:#DDDDDD !important; }
 
-/* Inputs de Streamlit (BaseWeb) */
-div[data-baseweb="input"] input { 
-    color:#FFFFFF !important; 
-    background-color:#444444 !important; 
+/* Todos los selectbox, multiselect y radio buttons */
+div[data-baseweb="select"], div[data-baseweb="radio"], div[data-baseweb="checkbox"] {
+    background-color:#444444 !important;
+    color:#FFFFFF !important;
+    border-radius:10px !important;
+    border:2px solid #b08d15 !important;
+    box-shadow:none !important;
 }
-div[data-baseweb="input"] input:focus,
-div[data-baseweb="input"] input:hover {
+div[data-baseweb="select"]:hover,
+div[data-baseweb="select"]:focus,
+div[data-baseweb="radio"]:hover,
+div[data-baseweb="radio"]:focus,
+div[data-baseweb="checkbox"]:hover,
+div[data-baseweb="checkbox"]:focus {
     background-color:#444444 !important;
     color:#FFFFFF !important;
     box-shadow:none !important;
-}
-
-/* Selectboxes */
-div[data-baseweb="select"] * { 
-    font-size:14px !important; 
-    cursor:pointer !important; 
-    background-color:#444444 !important;
 }
 
 /* Botones */
