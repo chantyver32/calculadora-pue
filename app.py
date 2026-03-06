@@ -253,7 +253,6 @@ if tara_personal:
         tara_extra=float(tara_txt)
     except:
         tara_extra=0
-
 # PUE LIBRE
 if modo_libre:
 
