@@ -76,10 +76,6 @@ def guardar_db(datos):
 datos=cargar_db()
 hoy=datetime.now().strftime('%Y-%m-%d')
 
-# CONTROL RESET
-if "reset_select" not in st.session_state:
-    st.session_state.reset_select = 0
-
 # LOGO
 if os.path.exists("champlitte.jpg"):
     st.image("champlitte.jpg",width=120)
@@ -119,21 +115,12 @@ productos={
 
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
-
-    st.session_state.reset_select += 1
-
-    st.session_state["peso_input"]=""
-    st.session_state["tara_input"]=""
-    st.session_state["pue_libre"]=""
-
+    if "p_sel" in st.session_state:
+        del st.session_state["p_sel"]
     st.rerun()
 
 # SELECTOR
-opcion=st.selectbox(
-"SELECCIONA ARTÍCULO",
-sorted(productos.keys()),
-key=f"p_sel_{st.session_state.reset_select}"
-)
+opcion=st.selectbox("SELECCIONA ARTÍCULO",sorted(productos.keys()),key="p_sel")
 
 # INVENTARIO
 if opcion!="":
@@ -180,7 +167,7 @@ pue = productos.get(opcion,0)
 col1,col2=st.columns(2)
 
 with col1:
-    peso_txt = st.text_input("Peso Báscula",key="peso_input")
+    peso_txt = st.text_input("Peso Báscula",value="")
 
     try:
         peso_total=float(peso_txt)
@@ -197,7 +184,7 @@ tara_extra=0
 
 if tara_personal:
 
-    tara_txt=st.text_input("Peso tara personalizada",key="tara_input")
+    tara_txt=st.text_input("Peso tara personalizada",value="")
 
     try:
         tara_extra=float(tara_txt)
@@ -207,7 +194,7 @@ if tara_personal:
 # PUE LIBRE
 if modo_libre:
 
-    pue_txt=st.text_input("PUE personalizado",key="pue_libre")
+    pue_txt=st.text_input("PUE personalizado",value="")
 
     try:
         pue=float(pue_txt)
@@ -265,37 +252,17 @@ if not df_hist.empty:
 
     if not df_hoy.empty:
 
-        df_hoy=df_hoy.reset_index()
+        df_hoy=df_hoy[["hora","art","cant","op"]]
+        df_hoy.columns=["Hora","Artículo","Cantidad","Operación"]
 
-        st.dataframe(
-            df_hoy[["hora","art","cant","op"]],
-            use_container_width=True,
-            hide_index=True
-        )
+        st.table(df_hoy)
 
-        borrar_index=st.number_input(
-            "Eliminar registro (número de fila)",
-            min_value=0,
-            max_value=len(df_hoy)-1,
-            step=1
-        )
-
-        if st.button("Eliminar registro seleccionado"):
-
-            real_index=df_hoy.loc[borrar_index,"index"]
-
-            datos["historial"].pop(real_index)
-
-            guardar_db(datos)
-
-            st.success("Registro eliminado")
-            st.rerun()
-
-# INVENTARIO
+# RESUMEN INVENTARIO
 st.divider()
 st.subheader("📊 Resumen Inventario")
 
 productos_activos=set(
+list(datos.get("iniciales",{}).get(hoy,{}).keys())+
 list(datos.get("totales",{}).get(hoy,{}).keys())
 )
 
@@ -303,11 +270,15 @@ tabla=[]
 
 for art in productos_activos:
 
+    ini=datos.get("iniciales",{}).get(hoy,{}).get(art,0)
     consumo=datos.get("totales",{}).get(hoy,{}).get(art,0)
+    saldo=ini-consumo
 
     tabla.append({
         "PRODUCTO":art,
-        "CONSUMO HOY":round(consumo,2)
+        "TENÍA":round(ini,2),
+        "CONSUMO HOY":round(consumo,2),
+        "SALDO":round(saldo,2)
     })
 
 if tabla:
@@ -318,11 +289,13 @@ else:
 
 # BORRAR TODO
 st.divider()
-st.subheader("⚠️ Administración")
+st.subheader("⚠️ Administración de datos")
 
-confirmar=st.checkbox("Confirmo borrar todo")
+st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
 
-if st.button("🗑 BORRAR TODO"):
+confirmar=st.checkbox("Confirmo que quiero borrar todos los registros")
+
+if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
 
     if confirmar:
 
@@ -334,7 +307,10 @@ if st.button("🗑 BORRAR TODO"):
 
         guardar_db(datos)
 
-        st.success("Datos eliminados")
+        st.success("Todos los registros fueron eliminados")
         st.rerun()
+
+    else:
+        st.error("Debes confirmar la eliminación.")
 
 st.caption("Champlitte v3.1")
