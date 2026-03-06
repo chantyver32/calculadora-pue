@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta
 
 # CONFIGURACIÓN
-st.set_page_config(page_title="PUE Champlitte v3.0", page_icon="🍰", layout="centered")
+st.set_page_config(page_title="PUE Champlitte v3.1", page_icon="🍰", layout="centered")
 
 # CSS
 st.markdown("""
@@ -53,7 +53,7 @@ color:#206b2d;
 """,unsafe_allow_html=True)
 
 # BASE DATOS
-DB_FILE="data_champlitte_v30.json"
+DB_FILE="data_champlitte_v31.json"
 
 def cargar_db():
     if os.path.exists(DB_FILE):
@@ -108,8 +108,8 @@ productos={
 "TINTA EPSON 544":0.078
 }
 
-# LIMPIAR
-if st.button("🔄 LIMPIAR / BUSCAR OTRO"):
+# LIMPIAR CAMPOS
+if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.p_sel=""
     st.rerun()
 
@@ -277,4 +277,32 @@ else:
 
     st.info("Sin movimientos hoy")
 
-st.caption("Champlitte v3.0")
+# BORRAR TODO
+st.divider()
+st.subheader("⚠️ Administración de datos")
+
+st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
+
+confirmar=st.checkbox("Confirmo que quiero borrar todos los registros")
+
+if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
+
+    if confirmar:
+
+        datos={
+            "historial":[],
+            "totales":{},
+            "iniciales":{}
+        }
+
+        guardar_db(datos)
+
+        st.success("Todos los registros fueron eliminados")
+
+        st.rerun()
+
+    else:
+
+        st.error("Debes confirmar la eliminación.")
+
+st.caption("Champlitte v3.1")
