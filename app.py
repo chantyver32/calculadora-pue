@@ -8,41 +8,66 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="PUE Champlitte v3.1", page_icon="🍰", layout="centered")
 
 # ---------------------- CSS ----------------------
-# ---------------------- CSS ----------------------
 st.markdown("""
 <style>
 .stApp { background-color: #FFFFFF; }
+
+/* Texto general */
 h1, h2, h3, p, label, .stMarkdown, span { color:#000000 !important; }
+
+/* Ocultar header */
 header[data-testid="stHeader"] { visibility:hidden; }
 
-/* Ajuste de Inputs para que NO sean negros */
+/* Inputs y textarea */
 input, textarea {
-    color:#000000 !important;
-    background-color:#F0F2F6 !important; /* Gris muy claro */
+    color:#FFFFFF !important;
+    background-color:#444444 !important;
     border-radius:10px !important;
     border:2px solid #b08d15 !important;
 }
+input::placeholder { color:#DDDDDD !important; }
 
-/* Forzar color de texto en inputs de Streamlit */
+/* Inputs de Streamlit (BaseWeb) */
 div[data-baseweb="input"] input { 
-    color:#000000 !important; 
-    background-color:#F0F2F6 !important; 
+    color:#FFFFFF !important; 
+    background-color:#444444 !important; 
 }
-
 div[data-baseweb="select"] * { 
     font-size:14px !important; 
     cursor:pointer !important; 
-    color: #000000 !important;
 }
 
+/* Botones */
 div.stButton > button {
-    width:100%; border-radius:10px; height:3.5em; 
-    background-color:#fff2bd !important; color:#000000 !important; font-weight:bold; border:1px solid #e0d5a6 !important;
+    width:100%; 
+    border-radius:10px; 
+    height:3.5em; 
+    background-color:#fff2bd !important; 
+    color:#000000 !important; 
+    font-weight:bold; 
+    border:1px solid #e0d5a6 !important;
+    box-shadow:none !important;
 }
 
+/* Evitar hover y focus en botones */
+div.stButton > button:hover,
+div.stButton > button:focus,
+div.stButton > button:active {
+    background-color:#fff2bd !important;
+    color:#000000 !important;
+    box-shadow:none !important;
+}
+
+/* Confirmación */
 .confirmacion {
-    background:#e8ffe8; border:2px solid #38a169; border-radius:12px; padding:15px;
-    margin-top:10px; font-size:18px; font-weight:bold; color:#206b2d;
+    background:#e8ffe8; 
+    border:2px solid #38a169; 
+    border-radius:12px; 
+    padding:15px;
+    margin-top:10px; 
+    font-size:18px; 
+    font-weight:bold; 
+    color:#206b2d;
 }
 </style>
 """, unsafe_allow_html=True)
