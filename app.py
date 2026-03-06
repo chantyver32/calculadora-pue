@@ -28,7 +28,6 @@ border-radius:10px !important;
 border:2px solid #b08d15 !important;
 }
 
-/* SELECT NORMAL */
 div[data-baseweb="select"] *{
 font-size:14px !important;
 cursor:pointer !important;
@@ -77,7 +76,7 @@ def guardar_db(datos):
 datos=cargar_db()
 hoy=datetime.now().strftime('%Y-%m-%d')
 
-# CONTROL RESET SELECTBOX
+# CONTROL RESET
 if "reset_select" not in st.session_state:
     st.session_state.reset_select = 0
 
@@ -121,10 +120,11 @@ productos={
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
 
-    if "p_sel" in st.session_state:
-        del st.session_state["p_sel"]
-
     st.session_state.reset_select += 1
+
+    st.session_state["peso_input"]=""
+    st.session_state["tara_input"]=""
+    st.session_state["pue_libre"]=""
 
     st.rerun()
 
@@ -180,7 +180,7 @@ pue = productos.get(opcion,0)
 col1,col2=st.columns(2)
 
 with col1:
-    peso_txt = st.text_input("Peso Báscula",value="")
+    peso_txt = st.text_input("Peso Báscula",key="peso_input")
 
     try:
         peso_total=float(peso_txt)
@@ -197,7 +197,7 @@ tara_extra=0
 
 if tara_personal:
 
-    tara_txt=st.text_input("Peso tara personalizada",value="")
+    tara_txt=st.text_input("Peso tara personalizada",key="tara_input")
 
     try:
         tara_extra=float(tara_txt)
@@ -207,7 +207,7 @@ if tara_personal:
 # PUE LIBRE
 if modo_libre:
 
-    pue_txt=st.text_input("PUE personalizado",value="")
+    pue_txt=st.text_input("PUE personalizado",key="pue_libre")
 
     try:
         pue=float(pue_txt)
@@ -299,31 +299,5 @@ if tabla:
     st.dataframe(df,use_container_width=True,hide_index=True)
 else:
     st.info("Sin movimientos hoy")
-
-# BORRAR TODO
-st.divider()
-st.subheader("⚠️ Administración de datos")
-
-st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
-
-confirmar=st.checkbox("Confirmo que quiero borrar todos los registros")
-
-if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
-
-    if confirmar:
-
-        datos={
-            "historial":[],
-            "totales":{},
-            "iniciales":{}
-        }
-
-        guardar_db(datos)
-
-        st.success("Todos los registros fueron eliminados")
-        st.rerun()
-
-    else:
-        st.error("Debes confirmar la eliminación.")
 
 st.caption("Champlitte v3.1")
