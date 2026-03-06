@@ -31,7 +31,7 @@ input, textarea {
 /* Evitar que cambie el fondo al pasar mouse o escribir */
 input:focus, textarea:focus, input:hover, textarea:hover {
     background-color:#b08d15 !important;
-    color:#FFFFFF !important;
+    color:#b08d15 !important;
     box-shadow:none !important;
 }
 
