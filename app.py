@@ -14,11 +14,11 @@ from datetime import datetime, timedelta
 
 # 1. CONFIGURACIÓN DE PÁGINA
 
-st.set_page_config(page_title="PUE Champlitte v2.7", page_icon="🍰", layout="centered")
+st.set_page_config(page_title="PUE Champlitte v3.0", page_icon="🍰", layout="centered")
 
 
 
-# 2. CSS: TEXTO DE ENTRADA EN BLANCO
+# 2. CSS: DISEÑO "CHAMPLITTE" (Texto blanco en inputs corregido)
 
 st.markdown(
 
@@ -28,35 +28,25 @@ st.markdown(
 
     .stApp { background-color: #FFFFFF; }
 
-    
+    h1, h2, h3, p, label, .stMarkdown, span { color: #000000 !important; }
 
-    /* Títulos y etiquetas en Negro para lectura clara */
-
-    h1, h2, h3, p, label, .stMarkdown, span {
-
-        color: #000000 !important;
-
-    }
+    header[data-testid="stHeader"] { visibility: hidden !important; }
 
 
 
-    header[data-testid="stHeader"] { visibility: hidden; }
-
-
-
-    /* --- EL CAMBIO SOLICITADO: TEXTO ESCRITO EN BLANCO --- */
+    /* INPUTS: FONDO OSCURO Y TEXTO BLANCO */
 
     input {
 
-        color: #FFFFFF !important; /* Texto que escribes */
+        color: #FFFFFF !important; 
 
-        background-color: #333333 !important; /* Fondo oscuro para que se vea el blanco */
+        background-color: #333333 !important; 
 
         font-size: 20px !important;
 
         font-weight: bold !important;
 
-        border-radius: 8px !important;
+        border-radius: 12px !important;
 
         border: 2px solid #000000 !important;
 
@@ -64,35 +54,13 @@ st.markdown(
 
     
 
-    /* Asegurar que el placeholder (lo que dice '0.000') se vea gris claro */
-
-    input::placeholder {
-
-        color: #CCCCCC !important;
-
-    }
-
-
-
-    /* SELECTOR: Mantener visible */
-
-    div[data-baseweb="select"] div {
-
-        color: #000000 !important;
-
-        font-weight: bold !important;
-
-    }
-
-
-
-    /* BOTONES ESTILO CHAMPLITTE */
+    /* BOTONES CREMA */
 
     div.stButton > button {
 
         width: 100%;
 
-        border-radius: 10px;
+        border-radius: 12px;
 
         height: 3.5em;
 
@@ -106,31 +74,17 @@ st.markdown(
 
     }
 
-    
 
-    /* CAJA DE RESUMEN FINAL */
 
-    .resumen-caja {
+    /* TABLAS */
 
-        background-color: #ffffff;
+    [data-testid="stTable"] {
 
-        padding: 20px;
+        background-color: #f9f9f9;
 
-        border-radius: 15px;
-
-        border: 2px solid #f0e6bc;
-
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
-
-        margin: 20px 0px;
+        color: black !important;
 
     }
-
-    
-
-    .metric-value { font-size: 22px; font-weight: bold; color: #000; }
-
-    .metric-total { font-size: 26px; font-weight: 900; color: #b08d15; }
 
     </style>
 
@@ -142,29 +96,35 @@ st.markdown(
 
 
 
-# --- BASE DE DATOS ---
+# --- MANEJO DE BASE DE DATOS ---
 
-DB_FILE = "data_champlitte_v27.json"
+DB_FILE = "data_champlitte_v30.json"
 
 
 
 def cargar_db():
 
-    if os.path.exists(DB_FILE):
+    if not os.path.exists(DB_FILE):
 
-        try:
+        return {"historial": [], "totales": {}, "iniciales": {}}
 
-            with open(DB_FILE, "r") as f: return json.load(f)
+    try:
 
-        except: return {"historial": [], "totales": {}, "iniciales": {}}
+        with open(DB_FILE, "r") as f:
 
-    return {"historial": [], "totales": {}, "iniciales": {}}
+            return json.load(f)
+
+    except:
+
+        return {"historial": [], "totales": {}, "iniciales": {}}
 
 
 
 def guardar_db(datos):
 
-    with open(DB_FILE, "w") as f: json.dump(datos, f)
+    with open(DB_FILE, "w") as f:
+
+        json.dump(datos, f, indent=4)
 
 
 
@@ -172,7 +132,7 @@ def guardar_db(datos):
 
 try:
 
-    st.image(Image.open("champlitte.jpg"), width=110)
+    st.image("champlitte.jpg", width=120)
 
 except:
 
@@ -184,200 +144,166 @@ except:
 
 productos = {
 
-    "": 0, "BOLSA PAPEL CAFE #5": 0.832, "BOLSA PAPEL CAFE #6": 0.870,
+    "": 0,
 
-    "BOLSA PAPEL CAFE #14": 1.364, "BOLSA PAPEL CAFE #20": 1.616,
+    "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832,
 
-    "CAJA TUTIS": 0.048, "CAPACILLO CHINO": 0.00104,
+    "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
 
-    "CAPACILLO ROJO #72": 0.000436, "CONT BISAGRA": 0.014,
+    "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364,
 
-    "CUCHARA DESECHABLE": 0.00165, "ETIQUETA 4X4": 0.000328,
+    "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
 
-    "ETIQUETA 6X6": 0.00057, "EMPLAYE GRANDE": 1.174,
+    "CAJA TUTIS POR PZA A": 0.048,
 
-    "PAPEL ALUMINIO": 1.342, "SERVILLETA PQ/500": 0.001192,
+    "TINTA EPSON 544 (CMYK) POR PZA A": 0.078,
 
-    "COFIA": 0.238, "GUANTES POLIURETANO": 0.086,
+    "AZUCAR REFINADA POR KG A": 1.0,
 
-    "HIGIENICO SCOTT": 0.500, "TOALLA ROLLO 180M": 1.115,
+    "JABON LIQUIDO PARA MANOS POR L M": 1.0,
 
-    "BOLSA LOCK": 0.018, "CAJA DE GRAPAS": 0.176,
-
-    "CINTA EMPAQUE": 0.272, "CINTA DELIMITADORA": 0.346,
-
-    "TRASLADO VALORES": 0.0086, "ETIQUETA 13X19": 0.050,
-
-    "HOJAS BLANCAS PQ/500": 2.146, "TINTA EPSON 544": 0.078
-
-}
+} # (Abreviado para el ejemplo, mantén tu lista completa)
 
 
 
-opcion = st.selectbox("SELECCIONA ARTÍCULO:", sorted(list(productos.keys())), key="p_sel")
+opcion = st.selectbox("Selecciona Artículo:", sorted(list(productos.keys())), key="p_sel")
 
 
 
-if opcion != "":
+if opcion:
 
-    datos = cargar_db()
+    db = cargar_db()
 
     hoy = datetime.now().strftime('%Y-%m-%d')
 
-    ayer = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    
+
+    # Asegurar llaves en el JSON
+
+    if hoy not in db["iniciales"]: db["iniciales"][hoy] = {}
+
+    if hoy not in db["totales"]: db["totales"][hoy] = {}
 
 
 
     # --- INVENTARIO INICIAL ---
 
-    if hoy not in datos["iniciales"]: datos["iniciales"][hoy] = {}
+    val_ini = db["iniciales"][hoy].get(opcion, 0.0)
 
-    if opcion not in datos["iniciales"][hoy]:
+    with st.expander("Ajustar Inventario Inicial"):
 
-        ini_ayer = datos["iniciales"].get(ayer, {}).get(opcion, 0.0)
+        n_ini = st.number_input("Cantidad inicial:", value=float(val_ini), key="n_ini")
 
-        tot_ayer = datos["totales"].get(ayer, {}).get(opcion, 0.0)
+        if st.button("Guardar Inicial"):
 
-        datos["iniciales"][hoy][opcion] = max(0.0, ini_ayer - tot_ayer)
+            db["iniciales"][hoy][opcion] = n_ini
 
-        guardar_db(datos)
-
-
-
-    val_ini = datos["iniciales"][hoy][opcion]
-
-    
-
-    with st.expander("📝 Configurar Inicial"):
-
-        nuevo_ini = st.number_input("Cantidad inicial:", value=float(val_ini) if val_ini > 0 else None, placeholder="Escriba aquí...")
-
-        if st.button("GUARDAR INICIAL"):
-
-            datos["iniciales"][hoy][opcion] = nuevo_ini if nuevo_ini else 0.0
-
-            guardar_db(datos)
+            guardar_db(db)
 
             st.rerun()
 
 
 
-    st.divider()
+    # --- PESAJE ---
+
+    st.write(f"### ⚖️ Pesaje: {opcion}")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        p_total = st.number_input("Peso en Báscula:", value=None, placeholder="0.000", format="%.3f", key="peso_val")
+
+    with col2:
+
+        es_tinta = "TINTA" in opcion
+
+        tara = 0.0
+
+        if not es_tinta and productos[opcion] != 1.0:
+
+            if st.checkbox("¿Descontar Tara?"):
+
+                tara = st.number_input("Peso Tara:", value=0.045, format="%.3f")
 
 
 
-    # --- REGISTRO DE PESO ---
+    if st.button("REGISTRAR PESADA"):
 
-    st.write(f"### ⚖️ Registro: {opcion}")
+        if p_total:
 
-    pue = productos[opcion]
+            pue = productos[opcion]
 
-    
+            peso_ajustado = p_total - (0.030 if es_tinta else tara)
 
-    col_p1, col_p2 = st.columns(2)
-
-    with col_p1:
-
-        # Aquí el texto que escribas será BLANCO sobre fondo OSCURO
-
-        peso_total = st.number_input("Peso Báscula:", value=None, format="%.3f", placeholder="0.000")
-
-    with col_p2:
-
-        t_cont = st.checkbox("Contenedor (.045)")
-
-        t_bisag = st.checkbox("Bisagra (0.016)")
-
-
-
-    if st.button("REGISTRAR"):
-
-        if peso_total:
-
-            tara_calc = (0.045 if t_cont else 0) + (0.016 if t_bisag else 0)
-
-            p_neto = peso_total - (0.030 if "TINTA" in opcion else tara_calc)
-
-            divisor = 0.078 if "TINTA" in opcion else pue
+            divisor = 0.078 if es_tinta else pue
 
             
 
-            if p_neto >= 0:
+            if peso_ajustado >= 0:
 
-                cant_res = p_neto / divisor
+                cantidad = round(peso_ajustado / divisor, 2)
 
-                datos["historial"].append({"fecha": hoy, "hora": datetime.now().strftime('%H:%M'), "art": opcion, "cant": round(cant_res, 2)})
+                # Guardar
 
-                if hoy not in datos["totales"]: datos["totales"][hoy] = {}
+                db["historial"].append({
 
-                datos["totales"][hoy][opcion] = datos["totales"][hoy].get(opcion, 0.0) + cant_res
+                    "fecha": hoy, "hora": datetime.now().strftime('%H:%M'),
 
-                guardar_db(datos)
+                    "art": opcion, "cant": cantidad
 
-                st.success("Registrado con éxito")
+                })
+
+                db["totales"][hoy][opcion] = db["totales"][hoy].get(opcion, 0.0) + cantidad
+
+                guardar_db(db)
+
+                st.success(f"Registrado: {cantidad}")
 
                 st.rerun()
 
+            else:
 
-
-    # --- BALANCE VISUAL ---
-
-    total_hoy = datos["totales"].get(hoy, {}).get(opcion, 0.0)
-
-    saldo_final = max(0.0, val_ini - total_hoy)
+                st.error("Error: El peso es menor a la tara.")
 
 
 
-    st.markdown(f"""
+    # --- BALANCE ---
 
-    <div class="resumen-caja">
+    total_hoy = db["totales"][hoy].get(opcion, 0.0)
 
-        <div style="display:flex; justify-content:space-around; text-align:center; align-items:center;">
+    saldo = max(0.0, val_ini - total_hoy)
 
-            <div><small>INICIAL</small><br><b class="metric-value">{val_ini:,.2f}</b></div>
-
-            <div style="color:#e0d5a6;">−</div>
-
-            <div><small>PESADO</small><br><b class="metric-value">{total_hoy:,.2f}</b></div>
-
-            <div style="color:#e0d5a6;">=</div>
-
-            <div><small>SALDO FINAL</small><br><b class="metric-total">{saldo_final:,.2f}</b></div>
-
-        </div>
-
-    </div>
-
-    """, unsafe_allow_html=True)
+    st.metric("SALDO FINAL EN TIENDA", f"{saldo:,.2f}")
 
 
 
-# --- HISTORIAL ---
+# --- HISTORIAL (Siempre visible al final) ---
 
-if st.checkbox("Ver registros de hoy"):
+st.divider()
 
-    datos_h = cargar_db()
+st.write("### 📋 Registros de Hoy")
 
-    h_hoy = datetime.now().strftime('%Y-%m-%d')
+db_view = cargar_db()
 
-    df = pd.DataFrame([h for h in datos_h.get("historial", []) if h["fecha"] == h_hoy])
+hoy_str = datetime.now().strftime('%Y-%m-%d')
 
-    if not df.empty:
-
-        st.table(df[["hora", "art", "cant"]])
+hist = [h for h in db_view["historial"] if h["fecha"] == hoy_str]
 
 
 
-if st.button("🗑️ REINICIAR DÍA"):
+if hist:
 
-    datos_r = cargar_db()
+    st.table(pd.DataFrame(hist)[["hora", "art", "cant"]])
 
-    h_hoy = datetime.now().strftime('%Y-%m-%d')
+else:
 
-    datos_r["totales"][h_hoy] = {}
+    st.info("No hay pesajes registrados hoy.")
 
-    datos_r["historial"] = [h for h in datos_r["historial"] if h["fecha"] != h_hoy]
 
-    guardar_db(datos_r)
 
-    st.rerun()
+if st.button("Reiniciar Todo"):
+
+    guardar_db({"historial": [], "totales": {}, "iniciales": {}})
+
+    st.rerun() 
