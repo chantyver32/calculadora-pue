@@ -221,27 +221,18 @@ st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.
 # Checkbox de confirmación
 confirmar = st.checkbox("Confirmo que quiero borrar todos los registros")
 
-# Botón para borrar
-if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
-    if confirmar:
-        # Reiniciar DB
-        datos = {
-            "historial": [],
-            "totales": {},
-            "iniciales": {}
-        }
-        guardar_db(datos)
+# --- HISTORIAL ---
+st.divider()
+st.write("### 📋 Registros de Hoy")
+db_view = cargar_db()
+hoy_str = datetime.now().strftime('%Y-%m-%d')
+hist = [h for h in db_view["historial"] if h["fecha"] == hoy_str]
 
-        # Limpiar session_state de inputs
-        st.session_state.peso_input = ""
-        st.session_state.tara_input = ""
-        st.session_state.pue_input = ""
-        st.session_state.ini_input = ""
-        st.session_state.reset_select += 1  # Reinicia selectbox
-
-        st.success("✅ Todos los registros fueron eliminados")
-        st.rerun()  # Refresca la app
-    else:
-        st.error("❌ Debes confirmar la eliminación.")
+if hist:
+    df_hist = pd.DataFrame(hist)[["hora", "art", "cant", "op"]]
+    df_hist.columns = ["Hora", "Artículo", "Cant (2 dec)", "Operación (3 dec)"]
+    st.table(df_hist)
+else:
+    st.info("No hay registros hoy.")
 
 st.caption("Champlitte v3.1")
