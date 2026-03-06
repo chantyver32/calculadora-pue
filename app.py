@@ -76,7 +76,7 @@ def guardar_db(datos):
 datos=cargar_db()
 hoy=datetime.now().strftime('%Y-%m-%d')
 
-# RESET SELECT
+# CONTROL RESET
 if "reset_select" not in st.session_state:
     st.session_state.reset_select = 0
 
@@ -119,27 +119,69 @@ productos={
 
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
+
     st.session_state.reset_select += 1
+
+    st.session_state["peso_input"]=""
+    st.session_state["tara_input"]=""
+    st.session_state["pue_libre"]=""
+
     st.rerun()
 
-# SELECT
+# SELECTOR
 opcion=st.selectbox(
 "SELECCIONA ARTÍCULO",
 sorted(productos.keys()),
 key=f"p_sel_{st.session_state.reset_select}"
 )
 
+# INVENTARIO
+if opcion!="":
+
+    if hoy not in datos["iniciales"]:
+        datos["iniciales"][hoy]={}
+
+    if opcion not in datos["iniciales"][hoy]:
+
+        ayer=(datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
+
+        ini_ayer=datos.get("iniciales",{}).get(ayer,{}).get(opcion,0)
+        tot_ayer=datos.get("totales",{}).get(ayer,{}).get(opcion,0)
+
+        datos["iniciales"][hoy][opcion]=max(0,ini_ayer-tot_ayer)
+
+        guardar_db(datos)
+
+    with st.expander("📝 Ajustar Inventario Inicial"):
+
+        ini_txt = st.text_input("Cantidad actual",value="")
+
+        if st.button("GUARDAR INICIAL"):
+
+            try:
+                nuevo_ini=float(ini_txt)
+            except:
+                nuevo_ini=0
+
+            datos["iniciales"][hoy][opcion]=nuevo_ini
+            guardar_db(datos)
+            st.rerun()
+
 # REGISTRO
 st.write(f"### ⚖️ Registro: {opcion if opcion!='' else 'Modo Libre'}")
 
 modo_libre = opcion==""
+
+if modo_libre:
+    st.info("Modo libre activado")
 
 pue = productos.get(opcion,0)
 
 col1,col2=st.columns(2)
 
 with col1:
-    peso_txt = st.text_input("Peso Báscula","")
+    peso_txt = st.text_input("Peso Báscula",key="peso_input")
+
     try:
         peso_total=float(peso_txt)
     except:
@@ -155,7 +197,7 @@ tara_extra=0
 
 if tara_personal:
 
-    tara_txt=st.text_input("Peso tara personalizada","")
+    tara_txt=st.text_input("Peso tara personalizada",key="tara_input")
 
     try:
         tara_extra=float(tara_txt)
@@ -165,7 +207,7 @@ if tara_personal:
 # PUE LIBRE
 if modo_libre:
 
-    pue_txt=st.text_input("PUE personalizado","")
+    pue_txt=st.text_input("PUE personalizado",key="pue_libre")
 
     try:
         pue=float(pue_txt)
@@ -202,8 +244,14 @@ if st.button("REGISTRAR PESADA"):
 
             guardar_db(datos)
 
-            st.success("Pesada registrada")
-            st.rerun()
+            st.markdown(f"""
+            <div class="confirmacion">
+            ✅ PESADA REGISTRADA<br>
+            Artículo: {articulo}<br>
+            Resultado: {cant_res:.2f}<br>
+            Operación: {operacion}
+            </div>
+            """,unsafe_allow_html=True)
 
 # HISTORIAL
 st.divider()
