@@ -6,35 +6,31 @@ import json
 from datetime import datetime, timedelta
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="PUE Champlitte v2.7", page_icon="🍰", layout="centered")
+st.set_page_config(page_title="PUE Champlitte v2.8", page_icon="🍰", layout="centered")
 
-# 2. CSS MEJORADO
+# 2. CSS MEJORADO (Basado en tu diseño original)
 st.markdown(
     """
     <style>
     .stApp { background-color: #FFFFFF; }
     
-    /* Títulos y etiquetas en Negro */
     h1, h2, h3, p, label, .stMarkdown, span {
         color: #000000 !important;
     }
 
-    /* Ocultar header de Streamlit */
     header[data-testid="stHeader"] { visibility: hidden; }
 
-    /* CAMPOS DE ENTRADA: Texto Blanco sobre Fondo Oscuro */
     input {
         color: #FFFFFF !important; 
-        background-color: #444444 !important; /* Un gris un poco más suave */
+        background-color: #444444 !important;
         font-size: 20px !important;
         font-weight: bold !important;
         border-radius: 10px !important;
-        border: 2px solid #b08d15 !important; /* Borde dorado */
+        border: 2px solid #b08d15 !important;
     }
     
     input::placeholder { color: #BBBBBB !important; }
 
-    /* BOTONES ESTILO CHAMPLITTE */
     div.stButton > button {
         width: 100%;
         border-radius: 10px;
@@ -51,7 +47,6 @@ st.markdown(
         border: 1px solid #b08d15 !important;
     }
     
-    /* CAJA DE RESUMEN FINAL */
     .resumen-caja {
         background-color: #ffffff;
         padding: 20px;
@@ -83,6 +78,12 @@ def cargar_db():
 def guardar_db(datos):
     with open(DB_FILE, "w") as f: 
         json.dump(datos, f, indent=4)
+
+# --- FUNCIONES DE LIMPIEZA ---
+def limpiar_campos():
+    st.session_state.peso_input = 0.0
+    st.session_state.t_cont = False
+    st.session_state.t_bisag = False
 
 # --- LOGO ---
 if os.path.exists("champlitte.jpg"):
@@ -119,7 +120,6 @@ if opcion != "":
         datos["iniciales"][hoy] = {}
         
     if opcion not in datos["iniciales"][hoy]:
-        # Arrastrar saldo de ayer si existe
         ini_ayer = datos.get("iniciales", {}).get(ayer, {}).get(opcion, 0.0)
         tot_ayer = datos.get("totales", {}).get(ayer, {}).get(opcion, 0.0)
         datos["iniciales"][hoy][opcion] = max(0.0, ini_ayer - tot_ayer)
@@ -142,37 +142,51 @@ if opcion != "":
     
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        peso_total = st.number_input("Peso en Báscula:", value=None, format="%.3f", placeholder="0.000")
+        # Vinculado a session_state para permitir limpieza
+        peso_total = st.number_input("Peso en Báscula:", 
+                                     min_value=0.0,
+                                     step=0.001,
+                                     format="%.3f", 
+                                     key="peso_input")
     with col_p2:
-        t_cont = st.checkbox("Contenedor (.045)")
-        t_bisag = st.checkbox("Bisagra (0.016)")
+        t_cont = st.checkbox("Contenedor (.045)", key="t_cont")
+        t_bisag = st.checkbox("Bisagra (0.016)", key="t_bisag")
 
-    if st.button("REGISTRAR PESADA"):
-        if peso_total is not None:
-            tara_calc = (0.045 if t_cont else 0) + (0.016 if t_bisag else 0)
-            # Descuento especial para tintas o tara normal
-            p_neto = peso_total - (0.030 if "TINTA" in opcion else tara_calc)
-            
-            if p_neto > 0:
-                cant_res = p_neto / pue
+    # Botones de Acción
+    col_b1, col_b2 = st.columns(2)
+    
+    with col_b1:
+        if st.button("REGISTRAR PESADA"):
+            if peso_total > 0:
+                tara_calc = (0.045 if t_cont else 0) + (0.016 if t_bisag else 0)
+                p_neto = peso_total - (0.030 if "TINTA" in opcion else tara_calc)
                 
-                # Actualizar historial
-                datos["historial"].append({
-                    "fecha": hoy, 
-                    "hora": datetime.now().strftime('%H:%M'), 
-                    "art": opcion, 
-                    "cant": round(cant_res, 2)
-                })
-                
-                # Actualizar totales
-                if hoy not in datos["totales"]: datos["totales"][hoy] = {}
-                datos["totales"][hoy][opcion] = datos["totales"][hoy].get(opcion, 0.0) + cant_res
-                
-                guardar_db(datos)
-                st.success(f"Registrado: {cant_res:.2f} unidades")
-                st.rerun()
+                if p_neto > 0:
+                    cant_res = p_neto / pue
+                    
+                    datos["historial"].append({
+                        "fecha": hoy, 
+                        "hora": datetime.now().strftime('%H:%M'), 
+                        "art": opcion, 
+                        "cant": round(cant_res, 2)
+                    })
+                    
+                    if hoy not in datos["totales"]: datos["totales"][hoy] = {}
+                    datos["totales"][hoy][opcion] = datos["totales"][hoy].get(opcion, 0.0) + cant_res
+                    
+                    guardar_db(datos)
+                    st.success(f"Registrado: {cant_res:.2f} unidades")
+                    limpiar_campos()
+                    st.rerun()
+                else:
+                    st.error("Peso neto insuficiente (revisa la tara).")
             else:
-                st.error("El peso neto no puede ser cero o negativo.")
+                st.warning("Ingresa un peso válido.")
+
+    with col_b2:
+        if st.button("🧹 LIMPIAR"):
+            limpiar_campos()
+            st.rerun()
 
     # --- BALANCE VISUAL ---
     total_hoy = datos.get("totales", {}).get(hoy, {}).get(opcion, 0.0)
@@ -211,7 +225,7 @@ with col_h2:
         datos_r["totales"][h_hoy] = {}
         datos_r["historial"] = [h for h in datos_r["historial"] if h["fecha"] != h_hoy]
         guardar_db(datos_r)
-        st.warning("Datos del día borrados")
+        st.warning("Datos borrados")
         st.rerun()
 
-st.caption("v2.7 | Champlitte - Sistema de Control de Insumos")
+st.caption("v2.8 | Champlitte - Sistema de Control de Insumos")
