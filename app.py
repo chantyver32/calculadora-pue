@@ -113,7 +113,7 @@ productos={
 "TINTA EPSON 544":0.078
 }
 
-# CONTROL RESET SELECT Y CAMPOS
+# SESSION STATE
 if "reset_select" not in st.session_state:
     st.session_state.reset_select = 0
 
@@ -143,69 +143,6 @@ opcion = st.selectbox(
     key=f"p_sel_{st.session_state.reset_select}"
 )
 
-# PESO
-peso_txt = st.text_input(
-    "Peso Báscula",
-    key="peso_input"
-)
-
-try:
-    peso_total = float(peso_txt)
-except:
-    peso_total = 0
-
-# TARA PERSONALIZADA
-tara_personal = st.checkbox(
-    "Tara personalizada",
-    key="tara_check"
-)
-
-tara_extra = 0
-
-if tara_personal:
-
-    tara_txt = st.text_input(
-        "Peso tara personalizada",
-        key="tara_input"
-    )
-
-    try:
-        tara_extra = float(tara_txt)
-    except:
-        tara_extra = 0
-
-# INVENTARIO
-if opcion!="":
-
-    if hoy not in datos["iniciales"]:
-        datos["iniciales"][hoy]={}
-
-    if opcion not in datos["iniciales"][hoy]:
-
-        ayer=(datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
-
-        ini_ayer=datos.get("iniciales",{}).get(ayer,{}).get(opcion,0)
-        tot_ayer=datos.get("totales",{}).get(ayer,{}).get(opcion,0)
-
-        datos["iniciales"][hoy][opcion]=max(0,ini_ayer-tot_ayer)
-
-        guardar_db(datos)
-
-    with st.expander("📝 Ajustar Inventario Inicial"):
-
-        ini_txt = st.text_input("Cantidad actual",value="")
-
-        if st.button("GUARDAR INICIAL"):
-
-            try:
-                nuevo_ini=float(ini_txt)
-            except:
-                nuevo_ini=0
-
-            datos["iniciales"][hoy][opcion]=nuevo_ini
-            guardar_db(datos)
-            st.rerun()
-
 # REGISTRO
 st.write(f"### ⚖️ Registro: {opcion if opcion!='' else 'Modo Libre'}")
 
@@ -216,6 +153,7 @@ if modo_libre:
 
 pue = productos.get(opcion,0)
 
+# CAMPOS
 col1,col2=st.columns(2)
 
 with col1:
@@ -235,6 +173,7 @@ with col2:
     t_bisag=st.checkbox("Bisagra (-0.045)")
     t_cont=st.checkbox("Contenedor (-0.019)")
 
+# TARA PERSONALIZADA
 tara_personal = st.checkbox(
     "Tara personalizada",
     key="tara_check"
@@ -253,10 +192,11 @@ if tara_personal:
         tara_extra=float(tara_txt)
     except:
         tara_extra=0
+
 # PUE LIBRE
 if modo_libre:
 
-    pue_txt=st.text_input("PUE personalizado",value="")
+    pue_txt=st.text_input("PUE personalizado")
 
     try:
         pue=float(pue_txt)
@@ -348,31 +288,5 @@ if tabla:
     st.dataframe(df,use_container_width=True,hide_index=True)
 else:
     st.info("Sin movimientos hoy")
-
-# BORRAR TODO
-st.divider()
-st.subheader("⚠️ Administración de datos")
-
-st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
-
-confirmar=st.checkbox("Confirmo que quiero borrar todos los registros")
-
-if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
-
-    if confirmar:
-
-        datos={
-            "historial":[],
-            "totales":{},
-            "iniciales":{}
-        }
-
-        guardar_db(datos)
-
-        st.success("Todos los registros fueron eliminados")
-        st.rerun()
-
-    else:
-        st.error("Debes confirmar la eliminación.")
 
 st.caption("Champlitte v3.1")
