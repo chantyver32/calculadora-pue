@@ -17,17 +17,25 @@ h1, h2, h3, p, label, .stMarkdown, span {
 color:#000000 !important;
 }
 
-header[data-testid="stHeader"] { visibility:hidden; }
+header[data-testid="stHeader"] {
+visibility:hidden;
+}
 
+/* INPUT NUMERICOS */
 input {
 color:#FFFFFF !important;
 background-color:#444444 !important;
-font-size:20px !important;
-font-weight:bold !important;
 border-radius:10px !important;
 border:2px solid #b08d15 !important;
 }
 
+/* SELECT PRODUCTOS NORMAL */
+div[data-baseweb="select"] *{
+font-size:14px !important;
+cursor:default !important;
+}
+
+/* BOTONES */
 div.stButton > button {
 width:100%;
 border-radius:10px;
@@ -50,7 +58,7 @@ color:#206b2d;
 }
 
 </style>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # BASE DATOS
 DB_FILE="data_champlitte_v31.json"
@@ -108,7 +116,7 @@ productos={
 "TINTA EPSON 544":0.078
 }
 
-# LIMPIAR CAMPOS
+# LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.p_sel=""
     st.rerun()
@@ -125,17 +133,24 @@ if opcion!="":
     if opcion not in datos["iniciales"][hoy]:
 
         ayer=(datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
+
         ini_ayer=datos.get("iniciales",{}).get(ayer,{}).get(opcion,0)
         tot_ayer=datos.get("totales",{}).get(ayer,{}).get(opcion,0)
 
         datos["iniciales"][hoy][opcion]=max(0,ini_ayer-tot_ayer)
+
         guardar_db(datos)
 
     val_ini=datos["iniciales"][hoy][opcion]
 
     with st.expander("📝 Ajustar Inventario Inicial"):
 
-        nuevo_ini=st.number_input("Cantidad actual",value=float(val_ini))
+        nuevo_ini=st.number_input(
+            "Cantidad actual",
+            value=0.0,
+            format="%.3f",
+            key=f"ini_{opcion}_{hoy}"
+        )
 
         if st.button("GUARDAR INICIAL"):
 
@@ -156,7 +171,12 @@ pue = productos.get(opcion,0)
 col1,col2=st.columns(2)
 
 with col1:
-    peso_total=st.number_input("Peso Báscula",value=0.0,format="%.3f")
+    peso_total=st.number_input(
+        "Peso Báscula",
+        value=0.0,
+        format="%.3f",
+        key=f"peso_{hoy}"
+    )
 
 with col2:
     t_bisag=st.checkbox("Bisagra (-0.045)")
@@ -167,11 +187,21 @@ tara_personal=st.checkbox("Tara personalizada")
 tara_extra=0.0
 
 if tara_personal:
-    tara_extra=st.number_input("Peso tara personalizada",value=0.0,format="%.3f")
+    tara_extra=st.number_input(
+        "Peso tara personalizada",
+        value=0.0,
+        format="%.3f",
+        key=f"tara_{hoy}"
+    )
 
 # PUE LIBRE
 if modo_libre:
-    pue=st.number_input("PUE personalizado",value=1.0,format="%.6f")
+    pue=st.number_input(
+        "PUE personalizado",
+        value=0.0,
+        format="%.6f",
+        key=f"pue_{hoy}"
+    )
 
 # REGISTRAR
 if st.button("REGISTRAR PESADA"):
@@ -193,13 +223,11 @@ if st.button("REGISTRAR PESADA"):
             articulo=opcion if opcion!="" else "MODO LIBRE"
 
             datos["historial"].append({
-
                 "fecha":hoy,
                 "hora":datetime.now().strftime("%H:%M"),
                 "art":articulo,
                 "cant":round(cant_res,2),
                 "op":operacion
-
             })
 
             if hoy not in datos["totales"]:
@@ -211,15 +239,10 @@ if st.button("REGISTRAR PESADA"):
 
             st.markdown(f"""
             <div class="confirmacion">
-
-            ✅ PESADA REGISTRADA
-
-            Artículo: {articulo}
-
-            Resultado: {cant_res:.2f}
-
+            ✅ PESADA REGISTRADA<br>
+            Artículo: {articulo}<br>
+            Resultado: {cant_res:.2f}<br>
             Operación: {operacion}
-
             </div>
             """,unsafe_allow_html=True)
 
@@ -236,7 +259,6 @@ if not df_hist.empty:
     if not df_hoy.empty:
 
         df_hoy=df_hoy[["hora","art","cant","op"]]
-
         df_hoy.columns=["Hora","Artículo","Cantidad","Operación"]
 
         st.table(df_hoy)
@@ -259,22 +281,16 @@ for art in productos_activos:
     saldo=ini-consumo
 
     tabla.append({
-
-    "PRODUCTO":art,
-    "TENÍA":round(ini,2),
-    "CONSUMO HOY":round(consumo,2),
-    "SALDO":round(saldo,2)
-
+        "PRODUCTO":art,
+        "TENÍA":round(ini,2),
+        "CONSUMO HOY":round(consumo,2),
+        "SALDO":round(saldo,2)
     })
 
 if tabla:
-
     df=pd.DataFrame(tabla)
-
     st.dataframe(df,use_container_width=True,hide_index=True)
-
 else:
-
     st.info("Sin movimientos hoy")
 
 # BORRAR TODO
@@ -298,11 +314,9 @@ if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
         guardar_db(datos)
 
         st.success("Todos los registros fueron eliminados")
-
         st.rerun()
 
     else:
-
         st.error("Debes confirmar la eliminación.")
 
 st.caption("Champlitte v3.1")
