@@ -1,211 +1,103 @@
-You said
 import streamlit as st
-
 import pandas as pd
-
-from PIL import Image
-
 import os
-
 import json
-
-from datetime import datetime, timedelta
-
-
+from datetime import datetime
 
 # 1. CONFIGURACIÓN DE PÁGINA
-
 st.set_page_config(page_title="PUE Champlitte v3.0", page_icon="🍰", layout="centered")
 
-
-
-# 2. CSS: DISEÑO "CHAMPLITTE" (Texto blanco en inputs corregido)
-
+# 2. CSS: DISEÑO "CHAMPLITTE"
 st.markdown(
-
     """
-
     <style>
-
     .stApp { background-color: #FFFFFF; }
-
     h1, h2, h3, p, label, .stMarkdown, span { color: #000000 !important; }
-
     header[data-testid="stHeader"] { visibility: hidden !important; }
 
-
-
     /* INPUTS: FONDO OSCURO Y TEXTO BLANCO */
-
     input {
-
         color: #FFFFFF !important; 
-
         background-color: #333333 !important; 
-
         font-size: 20px !important;
-
         font-weight: bold !important;
-
         border-radius: 12px !important;
-
         border: 2px solid #000000 !important;
-
     }
-
     
-
     /* BOTONES CREMA */
-
     div.stButton > button {
-
         width: 100%;
-
         border-radius: 12px;
-
         height: 3.5em;
-
         background-color: #fff2bd !important;
-
         color: #000000 !important;
-
         font-weight: bold;
-
         border: 1px solid #e0d5a6 !important;
-
     }
-
-
 
     /* TABLAS */
-
     [data-testid="stTable"] {
-
         background-color: #f9f9f9;
-
         color: black !important;
-
     }
-
     </style>
-
     """, 
-
     unsafe_allow_html=True
-
 )
 
-
-
 # --- MANEJO DE BASE DE DATOS ---
-
 DB_FILE = "data_champlitte_v30.json"
 
-
-
 def cargar_db():
-
     if not os.path.exists(DB_FILE):
-
         return {"historial": [], "totales": {}, "iniciales": {}}
-
     try:
-
         with open(DB_FILE, "r") as f:
-
             return json.load(f)
-
     except:
-
         return {"historial": [], "totales": {}, "iniciales": {}}
-
-
 
 def guardar_db(datos):
-
     with open(DB_FILE, "w") as f:
-
         json.dump(datos, f, indent=4)
 
-
-
 # --- LOGO ---
-
-try:
-
-    st.image("champlitte.jpg", width=120)
-
-except:
-
-    st.write("### 🍰 PASTELERÍA CHAMPLITTE")
-
-
+st.write("### 🍰 PASTELERÍA CHAMPLITTE")
 
 # 3. PRODUCTOS
-
 productos = {
-
     "": 0,
-
     "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832,
-
     "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
-
     "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364,
-
     "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
-
     "CAJA TUTIS POR PZA A": 0.048,
-
     "TINTA EPSON 544 (CMYK) POR PZA A": 0.078,
-
     "AZUCAR REFINADA POR KG A": 1.0,
-
     "JABON LIQUIDO PARA MANOS POR L M": 1.0,
-
-} # (Abreviado para el ejemplo, mantén tu lista completa)
-
-
+}
 
 opcion = st.selectbox("Selecciona Artículo:", sorted(list(productos.keys())), key="p_sel")
 
-
-
 if opcion:
-
     db = cargar_db()
-
     hoy = datetime.now().strftime('%Y-%m-%d')
-
     
-
     # Asegurar llaves en el JSON
-
     if hoy not in db["iniciales"]: db["iniciales"][hoy] = {}
-
     if hoy not in db["totales"]: db["totales"][hoy] = {}
 
-
-
     # --- INVENTARIO INICIAL ---
-
     val_ini = db["iniciales"][hoy].get(opcion, 0.0)
-
     with st.expander("Ajustar Inventario Inicial"):
-
         n_ini = st.number_input("Cantidad inicial:", value=float(val_ini), key="n_ini")
-
         if st.button("Guardar Inicial"):
-
             db["iniciales"][hoy][opcion] = n_ini
-
             guardar_db(db)
-
             st.rerun()
 
-
-
-   # --- PESAJE ---
+    # --- PESAJE ---
     st.write(f"### ⚖️ Pesaje: {opcion}")
     col1, col2 = st.columns(2)
     with col1:
@@ -217,22 +109,22 @@ if opcion:
             if st.checkbox("¿Descontar Tara?"):
                 tara = st.number_input("Peso Tara:", value=0.045, format="%.3f")
         elif es_tinta:
-            tara = 0.030 # Tara fija para tintas
+            tara = 0.030 
             st.caption("Tara de envase tinta: 0.030kg")
 
-    # --- MEMORIA DE CÁLCULO (Visualización previa) ---
+    # --- MEMORIA DE CÁLCULO ---
     pue = productos[opcion]
     divisor = 0.078 if es_tinta else (pue if pue != 0 else 1)
     peso_neto = max(0.0, p_total - tara)
     resultado_previo = round(peso_neto / divisor, 2)
 
     if p_total > 0:
-        st.info(f"**Operación:** ({p_total:.3f}kg - {tara:.3f}kg) / {divisor} = **{resultado_previo} unidades**")
+        # Se muestra la operación antes del botón
+        st.info(f"**Operación:** ({p_total:.3f}kg - {tara:.3f}kg) / {divisor} = **{resultado_previo}**")
 
     if st.button("REGISTRAR PESADA"):
         if p_total > 0:
             if p_total >= tara:
-                # Guardar en DB
                 db["historial"].append({
                     "fecha": hoy, 
                     "hora": datetime.now().strftime('%H:%M'),
@@ -249,8 +141,13 @@ if opcion:
 
     # --- BALANCE ---
     total_hoy = db["totales"][hoy].get(opcion, 0.0)
-    # ... resto del código de balance
-
+    saldo_final = max(0.0, val_ini - total_hoy)
+    
+    st.divider()
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("INICIAL", f"{val_ini:,.2f}")
+    col_b.metric("SURTIDO HOY", f"{total_hoy:,.2f}")
+    col_c.metric("SALDO EN TIENDA", f"{saldo_final:,.2f}")
 
 # --- HISTORIAL ---
 st.divider()
@@ -260,16 +157,12 @@ hoy_str = datetime.now().strftime('%Y-%m-%d')
 hist = [h for h in db_view["historial"] if h["fecha"] == hoy_str]
 
 if hist:
-    # Mostramos la columna "operacion" que añadimos arriba
     df_hist = pd.DataFrame(hist)
+    # Mostramos la tabla con la columna de operación
     st.table(df_hist[["hora", "art", "operacion", "cant"]])
 else:
     st.info("No hay pesajes registrados hoy.")
 
-
-
 if st.button("Reiniciar Todo"):
-
     guardar_db({"historial": [], "totales": {}, "iniciales": {}})
-
-    st.rerun() 
+    st.rerun()
