@@ -113,13 +113,27 @@ productos={
 "TINTA EPSON 544":0.078
 }
 
-# CONTROL RESET SELECT
+# CONTROL RESET SELECT Y CAMPOS
 if "reset_select" not in st.session_state:
     st.session_state.reset_select = 0
 
+if "peso_input" not in st.session_state:
+    st.session_state.peso_input = ""
+
+if "tara_input" not in st.session_state:
+    st.session_state.tara_input = ""
+
+if "tara_check" not in st.session_state:
+    st.session_state.tara_check = False
+
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
+
     st.session_state.reset_select += 1
+    st.session_state.peso_input = ""
+    st.session_state.tara_input = ""
+    st.session_state.tara_check = False
+
     st.rerun()
 
 # SELECTOR
@@ -127,8 +141,38 @@ opcion = st.selectbox(
     "SELECCIONA ARTÍCULO",
     sorted(productos.keys()),
     key=f"p_sel_{st.session_state.reset_select}"
-
 )
+
+# PESO
+peso_txt = st.text_input(
+    "Peso Báscula",
+    key="peso_input"
+)
+
+try:
+    peso_total = float(peso_txt)
+except:
+    peso_total = 0
+
+# TARA PERSONALIZADA
+tara_personal = st.checkbox(
+    "Tara personalizada",
+    key="tara_check"
+)
+
+tara_extra = 0
+
+if tara_personal:
+
+    tara_txt = st.text_input(
+        "Peso tara personalizada",
+        key="tara_input"
+    )
+
+    try:
+        tara_extra = float(tara_txt)
+    except:
+        tara_extra = 0
 
 # INVENTARIO
 if opcion!="":
