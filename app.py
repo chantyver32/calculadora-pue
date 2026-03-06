@@ -129,7 +129,7 @@ with st.expander("📝 Ajustar Inventario Inicial"):
         except: nuevo_ini = 0
         datos["iniciales"][hoy][articulo_actual] = nuevo_ini
         guardar_db(datos)
-        st.experimental_rerun()
+
 
 # ---------------------- REGISTRO DE PESADA ----------------------
 st.write(f"### ⚖️ Registro: {opcion if opcion!='' else 'Modo Libre'}")
