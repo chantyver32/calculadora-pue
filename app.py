@@ -224,7 +224,7 @@ if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
         datos = {"historial":[],"totales":{},"iniciales":{}}
         guardar_db(datos)
         st.success("Todos los registros fueron eliminados")
-        st.experimental_rerun()
+        
     else:
         st.error("Debes confirmar la eliminación.")
 
