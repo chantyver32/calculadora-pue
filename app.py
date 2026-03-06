@@ -21,6 +21,11 @@ header[data-testid="stHeader"] {
 visibility:hidden;
 }
 
+/* QUITAR CURSOR */
+input, textarea {
+caret-color: transparent !important;
+}
+
 input {
 color:#FFFFFF !important;
 background-color:#444444 !important;
@@ -77,6 +82,10 @@ def guardar_db(datos):
 datos=cargar_db()
 hoy=datetime.now().strftime('%Y-%m-%d')
 
+# KEY DINÁMICA PARA RESETEAR SELECT
+if "select_key" not in st.session_state:
+    st.session_state.select_key = 0
+
 # LOGO
 if os.path.exists("champlitte.jpg"):
     st.image("champlitte.jpg",width=120)
@@ -116,12 +125,20 @@ productos={
 
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
+
     if "p_sel" in st.session_state:
         del st.session_state["p_sel"]
+
+    st.session_state.select_key += 1
+
     st.rerun()
 
 # SELECTOR
-opcion=st.selectbox("SELECCIONA ARTÍCULO",sorted(productos.keys()),key="p_sel")
+opcion=st.selectbox(
+"SELECCIONA ARTÍCULO",
+sorted(productos.keys()),
+key=f"p_sel_{st.session_state.select_key}"
+)
 
 # INVENTARIO
 if opcion!="":
@@ -140,14 +157,9 @@ if opcion!="":
 
         guardar_db(datos)
 
-    val_ini=datos["iniciales"][hoy][opcion]
-
     with st.expander("📝 Ajustar Inventario Inicial"):
 
-        ini_txt = st.text_input(
-            "Cantidad actual",
-            value=""
-        )
+        ini_txt = st.text_input("Cantidad actual",value="")
 
         if st.button("GUARDAR INICIAL"):
 
@@ -174,7 +186,6 @@ col1,col2=st.columns(2)
 
 with col1:
     peso_txt = st.text_input("Peso Báscula",value="")
-
     try:
         peso_total=float(peso_txt)
     except:
@@ -189,9 +200,7 @@ tara_personal=st.checkbox("Tara personalizada")
 tara_extra=0
 
 if tara_personal:
-
     tara_txt=st.text_input("Peso tara personalizada",value="")
-
     try:
         tara_extra=float(tara_txt)
     except:
@@ -249,78 +258,5 @@ if st.button("REGISTRAR PESADA"):
             Operación: {operacion}
             </div>
             """,unsafe_allow_html=True)
-
-# HISTORIAL
-st.divider()
-st.subheader("🧾 Historial de Pesajes")
-
-df_hist=pd.DataFrame(datos.get("historial",[]))
-
-if not df_hist.empty:
-
-    df_hoy=df_hist[df_hist["fecha"]==hoy]
-
-    if not df_hoy.empty:
-
-        df_hoy=df_hoy[["hora","art","cant","op"]]
-        df_hoy.columns=["Hora","Artículo","Cantidad","Operación"]
-
-        st.table(df_hoy)
-
-# RESUMEN INVENTARIO
-st.divider()
-st.subheader("📊 Resumen Inventario")
-
-productos_activos=set(
-list(datos.get("iniciales",{}).get(hoy,{}).keys())+
-list(datos.get("totales",{}).get(hoy,{}).keys())
-)
-
-tabla=[]
-
-for art in productos_activos:
-
-    ini=datos.get("iniciales",{}).get(hoy,{}).get(art,0)
-    consumo=datos.get("totales",{}).get(hoy,{}).get(art,0)
-    saldo=ini-consumo
-
-    tabla.append({
-        "PRODUCTO":art,
-        "TENÍA":round(ini,2),
-        "CONSUMO HOY":round(consumo,2),
-        "SALDO":round(saldo,2)
-    })
-
-if tabla:
-    df=pd.DataFrame(tabla)
-    st.dataframe(df,use_container_width=True,hide_index=True)
-else:
-    st.info("Sin movimientos hoy")
-
-# BORRAR TODO
-st.divider()
-st.subheader("⚠️ Administración de datos")
-
-st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
-
-confirmar=st.checkbox("Confirmo que quiero borrar todos los registros")
-
-if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
-
-    if confirmar:
-
-        datos={
-            "historial":[],
-            "totales":{},
-            "iniciales":{}
-        }
-
-        guardar_db(datos)
-
-        st.success("Todos los registros fueron eliminados")
-        st.rerun()
-
-    else:
-        st.error("Debes confirmar la eliminación.")
 
 st.caption("Champlitte v3.1")
