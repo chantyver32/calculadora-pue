@@ -69,7 +69,7 @@ try:
 except:
     st.write("### 🍰 PASTELERÍA CHAMPLITTE")
 
-# 3. PRODUCTOS Y PESOS UNITARIOS (PUE)
+# 3. PRODUCTOS Y FACTORES (PUE)
 productos = {
     "": 0,
     "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832,
@@ -88,85 +88,92 @@ if opcion:
     db = cargar_db()
     hoy = datetime.now().strftime('%Y-%m-%d')
     
+    # Asegurar llaves en el JSON
     if hoy not in db["iniciales"]: db["iniciales"][hoy] = {}
     if hoy not in db["totales"]: db["totales"][hoy] = {}
 
     # --- INVENTARIO INICIAL ---
     val_ini = db["iniciales"][hoy].get(opcion, 0.0)
-    with st.expander("Ajustar Inventario Inicial"):
-        n_ini = st.number_input("Cantidad inicial:", value=float(val_ini), key="n_ini")
-        if st.button("Guardar Inicial"):
+    with st.expander("⚙️ Ajustar Inventario Inicial"):
+        n_ini = st.number_input("Cantidad inicial en tienda:", value=float(val_ini), key="n_ini")
+        if st.button("Guardar Inventario Inicial"):
             db["iniciales"][hoy][opcion] = n_ini
             guardar_db(db)
+            st.success("Inventario actualizado.")
             st.rerun()
 
     # --- PESAJE ---
     st.write(f"### ⚖️ Pesaje: {opcion}")
     col1, col2 = st.columns(2)
+    
     with col1:
-        p_total = st.number_input("Peso en Báscula:", value=None, placeholder="0.000", format="%.3f", key="peso_val")
+        p_total = st.number_input("Peso en Báscula (kg):", value=0.0, format="%.3f", key="peso_val")
+    
     with col2:
         es_tinta = "TINTA" in opcion
         tara = 0.0
         if not es_tinta and productos[opcion] != 1.0:
             if st.checkbox("¿Descontar Tara?"):
-                tara = st.number_input("Peso Tara:", value=0.045, format="%.3f")
+                tara = st.number_input("Peso Tara (kg):", value=0.045, format="%.3f")
+        elif es_tinta:
+            tara = 0.030
+            st.caption("Tara de envase tinta: 0.030kg")
+
+    # --- MEMORIA DE CÁLCULO EN TIEMPO REAL ---
+    pue = productos[opcion]
+    divisor = 0.078 if es_tinta else (pue if pue != 0 else 1)
+    peso_neto = max(0.0, p_total - tara)
+    resultado_calculado = round(peso_neto / divisor, 2)
+
+    if p_total > 0:
+        st.info(f"**Cálculo:** ({p_total:.3f}kg - {tara:.3f}kg) / {divisor} = **{resultado_calculado} unidades**")
 
     if st.button("REGISTRAR PESADA"):
-        if p_total is not None:
-            pue = productos[opcion]
-            tara_final = 0.030 if es_tinta else tara
-            peso_neto = p_total - tara_final
-            divisor = 0.078 if es_tinta else (pue if pue > 0 else 1)
-            
-            if peso_neto >= 0:
-                cantidad = round(peso_neto / divisor, 2)
-                
-                # --- MOSTRAR OPERACIÓN REALIZADA ---
-                st.info(f"""
-                **Desglose de la Operación:**
-                * Peso Bruto: `{p_total:.3f}`
-                * Tara Aplicada: `- {tara_final:.3f}`
-                * Peso Neto: `{peso_neto:.3f}`
-                * **Fórmula:** ({p_total:.3f} - {tara_final:.3f}) / {divisor} = **{cantidad}**
-                """)
-                
-                # Guardar en DB con registro de operación
+        if p_total > 0:
+            if p_total >= tara:
+                # Registrar en Historial con la operación escrita
                 db["historial"].append({
                     "fecha": hoy, 
                     "hora": datetime.now().strftime('%H:%M'),
                     "art": opcion, 
-                    "cant": cantidad,
-                    "op": f"({p_total:.3f} - {tara_final:.3f}) / {divisor}"
+                    "operacion": f"({p_total:.3f} - {tara:.3f}) / {divisor}",
+                    "cant": resultado_calculado
                 })
-                db["totales"][hoy][opcion] = db["totales"][hoy].get(opcion, 0.0) + cantidad
+                # Sumar al total del día
+                db["totales"][hoy][opcion] = db["totales"][hoy].get(opcion, 0.0) + resultado_calculado
                 guardar_db(db)
-                st.success(f"Registrado: {cantidad} unidades.")
+                st.success(f"Registrado correctamente: {resultado_calculado}")
+                st.rerun()
             else:
-                st.error("Error: El peso en báscula es menor a la tara.")
-        else:
-            st.warning("Por favor, ingresa un peso válido.")
+                st.error("Error: El peso en báscula no puede ser menor a la tara.")
 
     # --- BALANCE ---
     total_hoy = db["totales"][hoy].get(opcion, 0.0)
     saldo = max(0.0, val_ini - total_hoy)
-    st.metric("SALDO FINAL EN TIENDA", f"{saldo:,.2f}")
+    
+    st.divider()
+    c1, c2, c3 = st.columns(3)
+    c1.metric("INICIAL", f"{val_ini:,.2f}")
+    c2.metric("SURTIDO (HOY)", f"{total_hoy:,.2f}")
+    c3.metric("SALDO FINAL", f"{saldo:,.2f}")
 
-# --- HISTORIAL DETALLADO ---
+# --- HISTORIAL ---
 st.divider()
-st.write("### 📋 Registros de Hoy con Operaciones")
+st.write("### 📋 Registros y Operaciones de Hoy")
 db_view = cargar_db()
 hoy_str = datetime.now().strftime('%Y-%m-%d')
 hist = [h for h in db_view["historial"] if h["fecha"] == hoy_str]
 
 if hist:
-    df_hist = pd.DataFrame(hist)[["hora", "art", "cant", "op"]]
-    df_hist.columns = ["Hora", "Artículo", "Cantidad", "Operación Realizada"]
-    st.table(df_hist)
+    # Convertimos a DataFrame para mostrar la tabla
+    df_hist = pd.DataFrame(hist)
+    # Reordenamos columnas para que la operación sea visible
+    st.table(df_hist[["hora", "art", "operacion", "cant"]])
 else:
     st.info("No hay pesajes registrados hoy.")
 
-if st.button("Reiniciar Todo"):
-    if os.path.exists(DB_FILE):
-        os.remove(DB_FILE)
-    st.rerun()
+# --- BOTÓN PELIGROSO ---
+with st.expander("⚠️ Zona de Peligro"):
+    if st.button("Borrar toda la base de datos"):
+        guardar_db({"historial": [], "totales": {}, "iniciales": {}})
+        st.rerun()
