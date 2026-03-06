@@ -126,6 +126,7 @@ if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.reset_select += 1
     st.session_state.peso_input = ""
     st.session_state.tara_input = ""
+    st.session_state.text_input = ""
     st.rerun()
 
 # SELECTOR
@@ -206,11 +207,6 @@ if tipo_tara == "Bisagra":
 elif tipo_tara == "Contenedor":
     tara_real = 0.019
 
-elif tipo_tara == "Personalizada":
-
-    tara_txt = st.text_input(
-        "Peso tara personalizada",
-        key="tara_input"
     )
 
     try:
