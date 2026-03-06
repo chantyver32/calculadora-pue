@@ -121,13 +121,16 @@ if "peso_input" not in st.session_state:
 if "tara_input" not in st.session_state:
     st.session_state.tara_input = ""
 
+if "pue_input" not in st.session_state:
+    st.session_state.pue_input = ""
+
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.reset_select += 1
     st.session_state.peso_input = ""
     st.session_state.tara_input = ""
+    st.session_state.pue_input = ""
     st.rerun()
-
 # SELECTOR
 opcion = st.selectbox(
     "SELECCIONA ARTÍCULO",
@@ -135,37 +138,36 @@ opcion = st.selectbox(
     key=f"p_sel_{st.session_state.reset_select}"
 )
 
+articulo_actual = opcion if opcion != "" else "MODO LIBRE"
 # INVENTARIO
-if opcion != "":
+if hoy not in datos["iniciales"]:
+    datos["iniciales"][hoy] = {}
 
-    if hoy not in datos["iniciales"]:
-        datos["iniciales"][hoy] = {}
+if articulo_actual not in datos["iniciales"][hoy]:
 
-    if opcion not in datos["iniciales"][hoy]:
+    ayer = (datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
 
-        ayer = (datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
+    ini_ayer = datos.get("iniciales",{}).get(ayer,{}).get(articulo_actual,0)
+    tot_ayer = datos.get("totales",{}).get(ayer,{}).get(articulo_actual,0)
 
-        ini_ayer = datos.get("iniciales",{}).get(ayer,{}).get(opcion,0)
-        tot_ayer = datos.get("totales",{}).get(ayer,{}).get(opcion,0)
+    datos["iniciales"][hoy][articulo_actual] = max(0, ini_ayer - tot_ayer)
 
-        datos["iniciales"][hoy][opcion] = max(0, ini_ayer - tot_ayer)
+    guardar_db(datos)
 
+with st.expander("📝 Ajustar Inventario Inicial"):
+
+    ini_txt = st.text_input("Cantidad actual", value="")
+
+    if st.button("GUARDAR INICIAL"):
+
+        try:
+            nuevo_ini = float(ini_txt)
+        except:
+            nuevo_ini = 0
+
+        datos["iniciales"][hoy][articulo_actual] = nuevo_ini
         guardar_db(datos)
-
-    with st.expander("📝 Ajustar Inventario Inicial"):
-
-        ini_txt = st.text_input("Cantidad actual", value="")
-
-        if st.button("GUARDAR INICIAL"):
-
-            try:
-                nuevo_ini = float(ini_txt)
-            except:
-                nuevo_ini = 0
-
-            datos["iniciales"][hoy][opcion] = nuevo_ini
-            guardar_db(datos)
-            st.rerun()
+        st.rerun()
 
 # REGISTRO
 st.write(f"### ⚖️ Registro: {opcion if opcion!='' else 'Modo Libre'}")
@@ -215,8 +217,7 @@ elif tipo_tara == "Personalizada":
 # PUE LIBRE
 if modo_libre:
 
-    pue_txt = st.text_input("PUE personalizado", value="")
-
+pue_txt = st.text_input("PUE personalizado", key="pue_input")
     try:
         pue = float(pue_txt)
     except:
