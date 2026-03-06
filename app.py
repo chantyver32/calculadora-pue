@@ -19,11 +19,21 @@ color:#000000 !important;
 
 header[data-testid="stHeader"] { visibility:hidden; }
 
-input {
+input, textarea {
 color:#FFFFFF !important;
 background-color:#444444 !important;
 border-radius:10px !important;
 border:2px solid #b08d15 !important;
+}
+
+input::placeholder {
+color:#DDDDDD !important;
+}
+
+/* Inputs de Streamlit */
+div[data-baseweb="input"] input {
+color:#FFFFFF !important;
+background-color:#444444 !important;
 }
 
 div[data-baseweb="select"] *{
@@ -124,12 +134,16 @@ if "tara_input" not in st.session_state:
 if "pue_input" not in st.session_state:
     st.session_state.pue_input = ""
 
+if "ini_input" not in st.session_state:
+    st.session_state.ini_input = ""
+
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.reset_select += 1
     st.session_state.peso_input = ""
     st.session_state.tara_input = ""
     st.session_state.pue_input = ""
+    st.session_state.ini_input = ""
     st.rerun()
 # SELECTOR
 opcion = st.selectbox(
@@ -156,8 +170,7 @@ if articulo_actual not in datos["iniciales"][hoy]:
 
 with st.expander("📝 Ajustar Inventario Inicial"):
 
-    ini_txt = st.text_input("Cantidad actual", value="")
-
+ini_txt = st.text_input("Cantidad actual", key="ini_input")
     if st.button("GUARDAR INICIAL"):
 
         try:
