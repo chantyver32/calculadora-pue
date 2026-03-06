@@ -126,7 +126,6 @@ if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.reset_select += 1
     st.session_state.peso_input = ""
     st.session_state.tara_input = ""
-    st.session_state.text_input = ""
     st.rerun()
 
 # SELECTOR
@@ -182,10 +181,7 @@ col1,col2 = st.columns(2)
 
 with col1:
 
-    peso_txt = st.text_input(
-        "Peso Báscula",
-        key="peso_input"
-    )
+    peso_txt = st.text_input("Peso Báscula", key="peso_input")
 
     try:
         peso_total = float(peso_txt)
@@ -207,12 +203,14 @@ if tipo_tara == "Bisagra":
 elif tipo_tara == "Contenedor":
     tara_real = 0.019
 
-    )
+elif tipo_tara == "Personalizada":
+
+    tara_txt = st.text_input("Peso tara personalizada", key="tara_input")
 
     try:
-        tara_real=float(tara_txt)
+        tara_real = float(tara_txt)
     except:
-        tara_real=0
+        tara_real = 0
 
 # PUE LIBRE
 if modo_libre:
@@ -279,7 +277,6 @@ if not df_hist.empty:
     if not df_hoy.empty:
 
         df_hoy = df_hoy.reindex(columns=["hora","art","cant","op"])
-
         df_hoy.columns = ["Hora","Artículo","Cantidad","Operación"]
 
         st.table(df_hoy)
@@ -312,7 +309,6 @@ for art in productos_activos:
 if tabla:
 
     df = pd.DataFrame(tabla)
-
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 else:
@@ -339,7 +335,6 @@ if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
         guardar_db(datos)
 
         st.success("Todos los registros fueron eliminados")
-
         st.rerun()
 
     else:
