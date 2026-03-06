@@ -197,15 +197,28 @@ with col1:
 
 with col2:
 
-    t_bisag = st.checkbox("Bisagra (-0.045)")
-    t_cont = st.checkbox("Contenedor (-0.019)")
-
-    tara_personal = st.checkbox(
-        "Tara personalizada",
-        key="tara_check"
+    tipo_tara = st.radio(
+        "Tipo de tara",
+        ["Sin tara","Bisagra","Contenedor","Personalizada"]
     )
 
-tara_extra = 0
+tara_real = 0
+
+if tipo_tara == "Bisagra":
+    tara_real = 0.045
+
+elif tipo_tara == "Contenedor":
+    tara_real = 0.019
+
+elif tipo_tara == "Personalizada":
+    tara_txt = st.text_input(
+        "Peso tara personalizada",
+        key="tara_input"
+    )
+    try:
+        tara_real=float(tara_txt)
+    except:
+        tara_real=0
 
 if tara_personal:
 
@@ -234,9 +247,8 @@ if st.button("REGISTRAR PESADA"):
 
     if peso_total > 0 and pue > 0:
 
-        tara_calc = (0.045 if t_bisag else 0) + (0.019 if t_cont else 0) + tara_extra
-
-        tara_real = 0.030 if "TINTA" in opcion else tara_calc
+        if "TINTA" in opcion:
+    tara_real = 0.030
 
         p_neto = peso_total - tara_real
 
