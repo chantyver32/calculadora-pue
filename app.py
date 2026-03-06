@@ -8,92 +8,46 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="PUE Champlitte v3.1", page_icon="🍰", layout="centered")
 
 # ---------------------- CSS ----------------------
-# ---------------------- CSS MINIMALISTA ----------------------
+
+# ---------------------- CSS CORREGIDO (FONDO CLARO) ----------------------
 st.markdown("""
 <style>
-/* Fondo general */
-.stApp {
-    background-color: #FAFAFA;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+.stApp { background-color: #FFFFFF; }
+h1, h2, h3, p, label, .stMarkdown, span { color:#000000 !important; }
+header[data-testid="stHeader"] { visibility:hidden; }
+
+/* ESTO QUITA EL COLOR NEGRO DE LOS INPUTS */
+input, textarea {
+    color:#000000 !important; 
+    background-color:#F0F2F6 !important; /* Gris muy claro */
+    border-radius:10px !important;
+    border:2px solid #b08d15 !important;
 }
 
-/* Texto general */
-h1, h2, h3, h4, p, label, .stMarkdown, span {
-    color: #1A1A1A !important;
+/* Color del texto dentro de los cuadros de Streamlit */
+div[data-baseweb="input"] input { 
+    color:#000000 !important; 
+    background-color:#F0F2F6 !important; 
 }
 
-/* Inputs, selectbox y textareas */
-input, textarea, .stTextInput>div>input, .stTextArea>div>textarea, .stSelectbox>div>div>div>div>select {
-    background-color: #FFFFFF !important;
-    color: #1A1A1A !important;
-    border: 1px solid #DDDDDD !important;
-    border-radius: 6px !important;
-    padding: 6px 10px !important;
+/* Color de los selectores */
+div[data-baseweb="select"] * { 
+    color:#000000 !important;
+    font-size:14px !important; 
 }
 
-/* Botones */
-.stButton>button {
-    background-color: #F5F5F5 !important;
-    color: #1A1A1A !important;
-    border: 1px solid #DDDDDD !important;
-    border-radius: 8px !important;
-    padding: 6px 16px !important;
-    font-weight: 500;
-    transition: background 0.2s ease;
-}
-.stButton>button:hover {
-    background-color: #E0E0E0 !important;
+div.stButton > button {
+    width:100%; border-radius:10px; height:3.5em; 
+    background-color:#fff2bd !important; color:#000000 !important; font-weight:bold; border:1px solid #e0d5a6 !important;
 }
 
-/* Expander */
-.stExpanderHeader {
-    background-color: #FFFFFF !important;
-    border: 1px solid #DDDDDD !important;
-    border-radius: 6px !important;
-    padding: 8px 12px !important;
-    color: #1A1A1A !important;
-}
-
-/* Tablas */
-.stDataFrame div.row_widget {
-    border-bottom: 1px solid #EEE !important;
-}
-
-/* Div confirmación */
 .confirmacion {
-    background-color: #E6FFED;
-    border-left: 4px solid #34C759;
-    padding: 10px 14px;
-    border-radius: 6px;
-    margin: 8px 0;
-    font-weight: 500;
-}
-
-/* Separadores */
-.stDivider {
-    border-top: 1px solid #DDD !important;
-}
-
-/* Advertencias y alertas */
-.stWarning {
-    background-color: #FFF4E5 !important;
-    border-left: 4px solid #FFA500 !important;
-}
-.stError {
-    background-color: #FFE5E5 !important;
-    border-left: 4px solid #FF3B30 !important;
-}
-.stInfo {
-    background-color: #E5F0FF !important;
-    border-left: 4px solid #007AFF !important;
-}
-
-/* Header de Streamlit oculto */
-header[data-testid="stHeader"] {
-    visibility: hidden;
+    background:#e8ffe8; border:2px solid #38a169; border-radius:12px; padding:15px;
+    margin-top:10px; font-size:18px; font-weight:bold; color:#206b2d;
 }
 </style>
 """, unsafe_allow_html=True)
+
 # ---------------------- BASE DE DATOS ----------------------
 DB_FILE = "data_champlitte_v31.json"
 
