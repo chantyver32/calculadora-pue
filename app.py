@@ -219,7 +219,11 @@ pue = productos.get(opcion,0)
 col1,col2=st.columns(2)
 
 with col1:
-    peso_txt = st.text_input("Peso Báscula",value="")
+
+    peso_txt = st.text_input(
+        "Peso Báscula",
+        key="peso_input"
+    )
 
     try:
         peso_total=float(peso_txt)
@@ -227,16 +231,23 @@ with col1:
         peso_total=0
 
 with col2:
+
     t_bisag=st.checkbox("Bisagra (-0.045)")
     t_cont=st.checkbox("Contenedor (-0.019)")
 
-tara_personal=st.checkbox("Tara personalizada")
+tara_personal = st.checkbox(
+    "Tara personalizada",
+    key="tara_check"
+)
 
 tara_extra=0
 
 if tara_personal:
 
-    tara_txt=st.text_input("Peso tara personalizada",value="")
+    tara_txt = st.text_input(
+        "Peso tara personalizada",
+        key="tara_input"
+    )
 
     try:
         tara_extra=float(tara_txt)
