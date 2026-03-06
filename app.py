@@ -6,9 +6,9 @@ import json
 from datetime import datetime, timedelta
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="PUE Champlitte v2.8", page_icon="🍰", layout="centered")
+st.set_page_config(page_title="PUE Champlitte v2.8.1", page_icon="🍰", layout="centered")
 
-# 2. CSS MEJORADO (Eliminación de bordes de enfoque y optimización de inputs)
+# 2. CSS MEJORADO
 st.markdown(
     """
     <style>
@@ -101,7 +101,6 @@ productos = {
 datos = cargar_db()
 hoy = datetime.now().strftime('%Y-%m-%d')
 
-# Botón Limpiar Selección (ubicado arriba para flujo rápido)
 if st.button("🔄 LIMPIAR / BUSCAR OTRO"):
     st.session_state.p_sel = ""
     st.rerun()
@@ -109,7 +108,6 @@ if st.button("🔄 LIMPIAR / BUSCAR OTRO"):
 opcion = st.selectbox("SELECCIONA ARTÍCULO:", sorted(list(productos.keys())), key="p_sel")
 
 if opcion != "":
-    # Lógica de inventario inicial
     if hoy not in datos["iniciales"]: datos["iniciales"][hoy] = {}
     if opcion not in datos["iniciales"][hoy]:
         ayer = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -132,27 +130,46 @@ if opcion != "":
     
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        # value=0.0 hace que sea más fácil borrar o sobreescribir
-        peso_total = st.number_input("Peso Báscula:", value=0.0, format="%.3f")
+        peso_total = st.number_input("Peso Báscula (kg):", value=0.0, format="%.3f")
     with col_p2:
-        t_cont = st.checkbox("Contenedor")
-        t_bisag = st.checkbox("Bisagra")
+        t_cont = st.checkbox("Contenedor (0.045)")
+        t_bisag = st.checkbox("Bisagra (0.016)")
 
     if st.button("REGISTRAR PESADA"):
         if peso_total > 0:
+            # Lógica de tara
             tara_calc = (0.045 if t_cont else 0) + (0.016 if t_bisag else 0)
-            p_neto = peso_total - (0.030 if "TINTA" in opcion else tara_calc)
+            extra_tara = 0.030 if "TINTA" in opcion else 0
+            tara_final = tara_calc + extra_tara
+            
+            p_neto = peso_total - tara_final
             
             if p_neto > 0:
                 cant_res = p_neto / pue
+                
+                # --- DESGLOSE DE OPERACIÓN (Solicitado) ---
+                st.info(f"""
+                **Cálculo realizado:**
+                1. **Peso Neto:** {peso_total:.3f} (Bruto) - {tara_final:.3f} (Tara) = **{p_neto:.3f} kg**
+                2. **Resultado:** {p_neto:.3f} kg / {pue} (PUE) = **{cant_res:.2f} unidades**
+                """)
+                
+                # Registro en DB
                 datos["historial"].append({
-                    "fecha": hoy, "art": opcion, "cant": round(cant_res, 2)
+                    "fecha": hoy, 
+                    "art": opcion, 
+                    "cant": round(cant_res, 2),
+                    "detalle": f"{peso_total:.3f}-{tara_final:.3f}/{pue}"
                 })
+                
                 if hoy not in datos["totales"]: datos["totales"][hoy] = {}
                 datos["totales"][hoy][opcion] = datos["totales"][hoy].get(opcion, 0.0) + cant_res
                 guardar_db(datos)
+                
                 st.success(f"Añadido: {cant_res:.2f}")
-                st.rerun()
+                # st.rerun() # Quitamos el rerun automático para que se vea el desglose un momento
+            else:
+                st.error("El peso neto es menor o igual a cero. Revisa la báscula.")
 
 # --- TABLA DE OPERACIONES REALIZADAS ---
 st.divider()
@@ -162,7 +179,6 @@ df_hist = pd.DataFrame(datos.get("historial", []))
 if not df_hist.empty:
     df_hoy = df_hist[df_hist["fecha"] == hoy].copy()
     if not df_hoy.empty:
-        # Agrupar por producto para mostrar la tabla resumen solicitada
         resumen_dia = []
         for art in df_hoy["art"].unique():
             p_ini = datos["iniciales"].get(hoy, {}).get(art, 0.0)
@@ -186,4 +202,4 @@ if st.button("🗑️ REINICIAR TODO EL DÍA"):
     guardar_db(datos)
     st.rerun()
 
-st.caption("v2.8 | Champlitte - Control de Insumos")
+st.caption("v2.8.1 | Champlitte - Control de Insumos")
