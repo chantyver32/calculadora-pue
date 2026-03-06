@@ -238,9 +238,16 @@ if st.button("REGISTRAR PESADA"):
 
     if peso_total>0 and pue>0:
 
-        tara_calc=(0.045 if t_bisag else 0)+(0.019 if t_cont else 0)+tara_extra
-        tara_real=0.030 if "TINTA" in opcion else tara_calc
-        p_neto=peso_total-tara_real
+        tara_calc = (0.045 if t_bisag else 0) + (0.019 if t_cont else 0)
+
+# agregar tara personalizada
+tara_real = tara_calc + tara_extra
+
+# excepción tinta
+if "TINTA" in opcion:
+    tara_real = 0.030 + tara_extra
+
+p_neto = peso_total - tara_real
 
         if p_neto>0:
 
