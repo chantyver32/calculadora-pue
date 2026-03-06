@@ -117,7 +117,7 @@ productos={
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
     if "p_sel" in st.session_state:
         del st.session_state["p_sel"]
-    st.session_state.reset_select += 1
+    st.session_state.reset_select += 0
     st.rerun()
 
 # SELECTOR
