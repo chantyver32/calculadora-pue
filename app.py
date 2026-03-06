@@ -212,31 +212,36 @@ if tabla:
     st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.info("Sin movimientos hoy")
-# ---------------------- ADMINISTRACIÓN DE DATOS ----------------------
+
+# BORRAR TODO
 st.divider()
-st.subheader("⚠️ Zona de Peligro")
+st.subheader("⚠️ Administración de datos")
+st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
 
-with st.expander("Haz clic aquí para gestionar la base de datos"):
-    st.warning("Esta acción es irreversible. Se borrará el historial de pesajes y los saldos de inventario.")
-    
-    # Mostrar conteo actual para dar contexto
-    num_registros = len(datos.get("historial", []))
-    st.write(f"Registros actuales en el historial: **{num_registros}**")
+# Checkbox de confirmación
+confirmar = st.checkbox("Confirmo que quiero borrar todos los registros")
 
-    confirmar = st.checkbox("Confirmo que deseo eliminar permanentemente todos los datos.", key="check_borrar")
+# Botón para borrar
+if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
+    if confirmar:
+        # Reiniciar DB
+        datos = {
+            "historial": [],
+            "totales": {},
+            "iniciales": {}
+        }
+        guardar_db(datos)
 
-    if st.button("🗑 EJECUTAR LIMPIEZA TOTAL", type="secondary"):
-        if confirmar:
-            datos = {
-                "historial": [],
-                "totales": {},
-                "iniciales": {}
-            }
-            guardar_db(datos)
-            st.success("Base de datos reiniciada con éxito.")
-            st.rerun()
-        else:
-            st.error("Por favor, marca la casilla de confirmación para continuar.")
+        # Limpiar session_state de inputs
+        st.session_state.peso_input = ""
+        st.session_state.tara_input = ""
+        st.session_state.pue_input = ""
+        st.session_state.ini_input = ""
+        st.session_state.reset_select += 1  # Reinicia selectbox
 
-st.divider()
-st.caption(f"Champlitte v3.1 | {datetime.now().strftime('%d/%m/%Y')}")
+        st.success("✅ Todos los registros fueron eliminados")
+        st.rerun()  # Refresca la app
+    else:
+        st.error("❌ Debes confirmar la eliminación.")
+
+st.caption("Champlitte v3.1")
