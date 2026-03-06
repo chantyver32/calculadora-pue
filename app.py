@@ -217,7 +217,8 @@ elif tipo_tara == "Personalizada":
 # PUE LIBRE
 if modo_libre:
 
-pue_txt = st.text_input("PUE personalizado", key="pue_input")
+    pue_txt = st.text_input("PUE personalizado", key="pue_input")
+
     try:
         pue = float(pue_txt)
     except:
