@@ -1,199 +1,207 @@
 import streamlit as st
+import pandas as pd
 from PIL import Image
 import os
+import json
+from datetime import datetime, timedelta
 
-# 1. Configuración de página
-st.set_page_config(page_title="PUE Champlitte", page_icon="🍰", layout="centered")
+# 1. CONFIGURACIÓN DE PÁGINA (Layout centrado es mejor para móvil)
+st.set_page_config(page_title="PUE Champlitte v2.8", page_icon="🍰", layout="centered")
 
-# 2. CSS: Fondo Blanco, Botones y Estilos
+# 2. CSS: OPTIMIZACIÓN MÓVIL Y ESTILO V1.1
 st.markdown(
     """
     <style>
-    .stApp { background-color: #FFFFFF; }
+    /* Evitar scroll horizontal y ajustar fondo */
+    .stApp { 
+        background-color: #FFFFFF; 
+    }
+    
+    /* Ajuste de contenedor principal para móviles */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+
+    /* Texto general en Negro */
     .stApp, p, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {
         color: #000000 !important;
     }
-    header[data-testid="stHeader"], footer {
-        visibility: hidden !important;
-        height: 0;
+
+    header[data-testid="stHeader"] { visibility: hidden; }
+
+    /* INPUTS: Optimizados para dedos */
+    input {
+        color: #000000 !important;
+        background-color: #FFFFFF !important;
+        font-size: 18px !important; /* Evita el zoom automático en iOS */
+        height: 50px !important;
+        border-radius: 10px !important;
+        border: 1px solid #e0d5a6 !important;
     }
+
+    /* BOTONES: Más grandes y fáciles de tocar (Touch-friendly) */
     div.stButton > button {
-        width: 100%;
-        border-radius: 12px;
-        height: 3.5em;
+        width: 100% !important;
+        border-radius: 12px !important;
+        height: 4em !important; /* Más altos para móviles */
         background-color: #fff2bd !important;
         color: #000000 !important;
-        font-weight: bold;
+        font-weight: bold !important;
+        font-size: 18px !important;
         border: 1px solid #e0d5a6 !important;
-        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        margin-bottom: 10px !important;
+        transition: transform 0.1s;
     }
-    div.stButton > button:active { transform: scale(0.92); }
-    div.stButton > button:hover {
-        border: 1px solid #000000 !important;
-        background-color: #ffe88a !important;
-    }
+    div.stButton > button:active { transform: scale(0.95); }
+    
+    /* MÉTRICAS: Ajustadas para que no se desborden en pantallas pequeñas */
     div[data-testid="stMetricValue"] { 
-        font-size: 45px; 
-        color: #000000 !important; 
+        font-size: 38px !important; 
+        color: #b08d15 !important; 
+        font-weight: 900 !important;
+        line-height: 1.2 !important;
     }
-    .block-container { padding-top: 1.5rem !important; }
+    
+    div[data-testid="stMetricLabel"] {
+        font-size: 14px !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* Ajuste de columnas en móvil (forzar que no sean demasiado estrechas) */
+    [data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 calc(50% - 1rem) !important;
+        min-width: 150px !important;
+    }
+
+    /* Ocultar decoraciones innecesarias en móvil */
+    .stDivider { margin: 1rem 0 !important; }
     </style>
     """, 
     unsafe_allow_html=True
 )
 
-# --- LOGO CHAMPLITTE ---
-nombre_imagen = "champlitte.jpg"
-ruta_actual = os.path.dirname(__file__)
-ruta_imagen = os.path.join(ruta_actual, nombre_imagen)
+# --- BASE DE DATOS ---
+DB_FILE = "data_champlitte_v28.json"
 
-try:
-    if os.path.exists(ruta_imagen):
-        img = Image.open(ruta_imagen)
-    else:
-        img = Image.open(nombre_imagen)
-    st.image(img, width=120)
-except:
-    st.write("### PASTELERÍA CHAMPLITTE")
+def cargar_db():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r") as f: return json.load(f)
+        except: return {"historial": [], "totales": {}, "iniciales": {}}
+    return {"historial": [], "totales": {}, "iniciales": {}}
 
-# 3. Diccionario de productos
+def guardar_db(datos):
+    with open(DB_FILE, "w") as f: json.dump(datos, f)
+
+def limpiar_campos():
+    st.session_state["peso_input"] = None
+    # No limpiamos el selector de producto para agilizar el re-ingreso
+
+# --- LOGO ---
+col_logo, _ = st.columns([1, 1])
+with col_logo:
+    try:
+        st.image(Image.open("champlitte.jpg"), width=100)
+    except:
+        st.write("### 🍰 CHAMPLITTE")
+
+# 3. PRODUCTOS
 productos = {
     "": 0,
-    "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832,
-    "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
-    "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364,
-    "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
-    "CAJA TUTIS POR PZA A": 0.048,
-    "CAPACILLO CHINO POR PZA B": 0.00104,
-    "CAPACILLO ROJO #72 POR PZA A": 0.000436,
-    "CONT BISAG P/5-6 TUTIS POR PZA A": 0.014,
-    "CUCHARA MED DESCH POR PZA A": 0.00165,
-    "ETIQUETA CHAMPLITTE CHICA 4 X 4 POR PZA B": 0.000328,
-    "ETIQUETA CHAMPLITTE MEDIANA 6 X 6 POR PZA B": 0.00057,
-    "EMPLAYE GRANDE ROLLO POR PZA T": 1.174,
-    "PAPEL ALUMINIO POR PZA T": 1.342,
-    "SERVILLETA PQ/500 HJ POR PZA A": 0.001192,
-    "COFIA POR PQ/100 PZAS A": 0.238,
-    "GUANTES TRANSP POLIURETANO POR PQ/100 PZAS A": 0.086,
-    "HIGIENICO SCOTT ROLLO POR PZA M": 0.500,
-    "TOALLA ROLLO 180M POR PZA M": 1.115,
-    "BOLSA LOCK POR PZA A": 0.018,
-    "CAJA DE GRAPAS POR PZA M": 0.176,
-    "CINTA TRANSP EMPAQUE POR PZA M": 0.272,
-    "CINTA DELIMITADORA POR PZA B": 0.346,
-    "COMPROBANTE TRASLADO VALORES POR PZA A": 0.0086,
-    "ETIQUETA BLANCA ADH 13 X 19 POR PQ M": 0.050,
-    "HOJAS BLANCAS PQ/500 POR PZA A": 2.146,
-    "TINTA EPSON 544 (CMYK) POR PZA A": 0.078,
-    "AGUA CIEL 20 POR LT A": 1.0,
-    "AZUCAR REFINADA POR KG A": 1.0,
-    "BOLSA CAMISETA LOGO CH POR KG A": 1.0,
-    "BOLSA CAMISETA LOGO GDE POR KG A": 1.0,
-    "BOLSA NATURAL 18 X 25 POR KG A": 1.0,
-    "PAPEL ENVOLTURA CHAMPLITTE POR KG M": 1.0,
-    "ROLLO POLIPUNTEADO 25 X 35 POR KG B": 1.0,
-    "BOLSA 90 X 120 POR KG A": 1.0,
-    "BOLSA 60 X 90 POR KG M": 1.0,
-    "CLOROLIMP POR L A": 1.0,
-    "FIBRA PREGON P/BAÑO POR PZA M": 1.0,
-    "FIBRA SCOTCH BRITE POR PZA A": 1.0,
-    "FIBRA AZUL P/LAVAR CHAROLAS POR PZA B": 1.0,
-    "JABON LIQUIDO PARA MANOS POR L M": 1.0,
-    "LAVALOZA POR L A": 1.0,
-    "PRO GEL POR L B": 1.0,
-    "ROLLO TERMICO P/TPV POR PZA A": 1.0,
-    "CUBETA POR PZA M": 1.0,
-    "ESCOBA POR PZA A": 1.0,
-    "ESCURRIDOR POR PZA M": 1.0,
-    "RECOGEDOR POR PZA M": 1.0,
-    "MECHUDO POR PZA A": 1.0,
+    "BOLSA PAPEL CAFE #5": 0.832, "BOLSA PAPEL CAFE #6": 0.870,
+    "BOLSA PAPEL CAFE #14": 1.364, "BOLSA PAPEL CAFE #20": 1.616,
+    "CAJA TUTIS": 0.048, "CAPACILLO CHINO": 0.00104,
+    "CAPACILLO ROJO #72": 0.000436, "CONT BISAGRA": 0.014,
+    "CUCHARA DESECHABLE": 0.00165, "ETIQUETA 4X4": 0.000328,
+    "ETIQUETA 6X6": 0.00057, "EMPLAYE GRANDE": 1.174,
+    "PAPEL ALUMINIO": 1.342, "SERVILLETA PQ/500": 0.001192,
+    "COFIA": 0.238, "GUANTES POLIURETANO": 0.086,
+    "HIGIENICO SCOTT": 0.500, "TOALLA ROLLO 180M": 1.115,
+    "BOLSA LOCK": 0.018, "CAJA DE GRAPAS": 0.176,
+    "CINTA EMPAQUE": 0.272, "CINTA DELIMITADORA": 0.346,
+    "TRASLADO VALORES": 0.0086, "ETIQUETA 13X19": 0.050,
+    "HOJAS BLANCAS PQ/500": 2.146, "TINTA EPSON 544": 0.078
 }
 
-def limpiar_pantalla():
-    st.session_state["peso_input"] = None
-    st.session_state["tara_input"] = None
-    st.session_state["activar_tara"] = False
-    st.session_state["producto_sel"] = ""
+# --- INTERFAZ PRINCIPAL ---
+opcion = st.selectbox("ARTÍCULO:", sorted(list(productos.keys())), key="p_sel")
 
-# --- INTERFAZ ---
-st.write("## Calculadora de PUE")
+if opcion != "":
+    datos = cargar_db()
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    
+    # Manejo de Inventario Inicial
+    if hoy not in datos["iniciales"]: datos["iniciales"][hoy] = {}
+    val_ini = datos["iniciales"][hoy].get(opcion, 0.0)
 
-opciones_lista = sorted(list(productos.keys()))
-opcion = st.selectbox("Artículo:", opciones_lista, key="producto_sel")
+    with st.expander("📝 AJUSTAR INICIAL"):
+        nuevo_ini = st.number_input("CANTIDAD INICIAL:", value=float(val_ini))
+        if st.button("GUARDAR INICIAL"):
+            datos["iniciales"][hoy][opcion] = nuevo_ini
+            guardar_db(datos)
+            st.rerun()
 
-# Variable para identificar si es tinta
-es_tinta = (opcion == "TINTA EPSON 544 (CMYK) POR PZA A")
+    st.divider()
 
-col_a, col_b = st.columns(2)
-with col_a:
-    peso_total = st.number_input("Peso Total:", min_value=0.0, format="%.3f", step=0.001, value=None, placeholder="0.000", key="peso_input")
+    # Registro de Peso
+    st.write(f"**⚖️ REGISTRO:** {opcion}")
+    pue = productos[opcion]
+    es_tinta = "TINTA" in opcion
 
-with col_b:
-    # Condición para ocultar tara si es tinta
+    # Inputs uno debajo del otro para mejor manejo en móvil
+    peso_total = st.number_input("PESO TOTAL:", format="%.3f", step=0.001, value=None, placeholder="0.000", key="peso_input")
+    
     if not es_tinta:
-        usar_tara = st.checkbox("Descontar Tara", key="activar_tara")
-        if usar_tara:
-            peso_tara = st.number_input("Peso Tara:", min_value=0.0, format="%.4f", step=0.0001, value=None, placeholder="0.0000", key="tara_input")
-        else:
-            peso_tara = 0.0
+        col_t1, col_t2 = st.columns(2)
+        with col_t1: t_cont = st.checkbox("Contenedor")
+        with col_t2: t_bisag = st.checkbox("Bisagra")
     else:
-        # Si es tinta, ignoramos la tara manual
-        peso_tara = 0.0
-        usar_tara = False
+        st.info("Descuento tinta: 0.030")
 
-st.write("") 
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    btn_calcular = st.button("CALCULAR")
-with col2:
-    st.button("LIMPIAR", on_click=limpiar_pantalla)
-
-# --- LÓGICA DE CÁLCULO ---
-if btn_calcular:
-    if opcion == "":
-        st.warning(" ⚠️ Selecciona el artículo.")
-    elif peso_total is None:
-        st.warning(" ⚠️ Ingresa el peso total.")
-    else:
-        pue = productos[opcion]
-        tara_final = peso_tara if peso_tara is not None else 0.0
-        peso_neto = peso_total - tara_final
-        
-        resultado = None
-        txt_formula = ""
-
-        if peso_neto < 0:
-            st.error(" 📢 La tara es mayor al peso total.")
-        else:
-            if pue == 1.0:
-                st.error(" 📢 El artículo se cuenta por pieza, kilo o litro.")
+    # Botones grandes
+    if st.button("CALCULAR Y REGISTRAR"):
+        if peso_total is not None:
+            tara = (0.045 if not es_tinta and t_cont else 0) + (0.016 if not es_tinta and t_bisag else 0)
+            peso_neto = peso_total - (0.030 if es_tinta else tara)
+            divisor = 0.078 if es_tinta else pue
             
-            # LÓGICA ESPECIAL TINTA
-            if es_tinta:
-                peso_ajustado = peso_neto - 0.030
-                if peso_ajustado < 0:
-                    st.error("📢 El peso neto es menor al envase de la tinta (0.030).")
-                else:
-                    resultado = peso_ajustado / 0.078
-                    # Texto de la fórmula solicitado
-                    txt_formula = f"({peso_total:.3f} - 0.030) / 0.078"
-            
-            # LÓGICA PRODUCTOS NORMALES
-            else:
-                if pue > 0:
-                    resultado = peso_neto / pue
-                    txt_formula = f"({peso_total:.3f} - {tara_final:.4f}) / {pue}" if usar_tara else f"{peso_total:.3f} / {pue}"
-                else:
-                    st.warning("⚠️ El artículo seleccionado no tiene un divisor válido.")
+            if peso_neto >= 0 and divisor > 0:
+                cant_res = peso_neto / divisor
+                datos["historial"].append({
+                    "fecha": hoy, "hora": datetime.now().strftime('%H:%M'), 
+                    "art": opcion, "cant": round(cant_res, 2)
+                })
+                if hoy not in datos["totales"]: datos["totales"][hoy] = {}
+                datos["totales"][hoy][opcion] = datos["totales"][hoy].get(opcion, 0.0) + cant_res
+                guardar_db(datos)
+                st.rerun()
 
-            # Mostrar resultado final
-            if resultado is not None:
-                st.divider()
-                st.metric(label=f"Cantidad para {opcion}", value=f"{resultado:.2f}")
-                st.caption(f"Fórmula utilizada: {txt_formula}")
-                if not es_tinta:
-                    st.caption(f"PUE utilizado: {pue}")
+    # Resultados en métricas grandes
+    total_salida = datos["totales"].get(hoy, {}).get(opcion, 0.0)
+    disponible = max(0.0, val_ini - total_salida)
+
+    st.markdown("---")
+    m1, m2 = st.columns(2)
+    m1.metric("SALIDA HOY", f"{total_salida:,.1f}")
+    m2.metric("DISPONIBLE", f"{disponible:,.1f}")
+
+    if st.checkbox("Ver historial hoy"):
+        df = pd.DataFrame([h for h in datos["historial"] if h["fecha"] == hoy and h["art"] == opcion])
+        if not df.empty:
+            st.dataframe(df[["hora", "cant"]].sort_values("hora", ascending=False), use_container_width=True)
 
 st.markdown("---")
-st.caption("v1.1 - Champlitte 2026")
+if st.button("🗑️ REINICIAR DÍA"):
+    datos = cargar_db()
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    datos["totales"][hoy] = {}
+    datos["historial"] = [h for h in datos["historial"] if h["fecha"] != hoy]
+    guardar_db(datos)
+    st.rerun()
+
+st.caption("v2.8 - Móvil Optimizado 🍰")
