@@ -121,15 +121,11 @@ if "peso_input" not in st.session_state:
 if "tara_input" not in st.session_state:
     st.session_state.tara_input = ""
 
-if "tara_check" not in st.session_state:
-    st.session_state.tara_check = False
-
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
     st.session_state.reset_select += 1
     st.session_state.peso_input = ""
     st.session_state.tara_input = ""
-    st.session_state.tara_check = False
     st.rerun()
 
 # SELECTOR
@@ -211,26 +207,16 @@ elif tipo_tara == "Contenedor":
     tara_real = 0.019
 
 elif tipo_tara == "Personalizada":
+
     tara_txt = st.text_input(
         "Peso tara personalizada",
         key="tara_input"
     )
+
     try:
         tara_real=float(tara_txt)
     except:
         tara_real=0
-
-if tara_personal:
-
-    tara_txt = st.text_input(
-        "Peso tara personalizada",
-        key="tara_input"
-    )
-
-    try:
-        tara_extra = float(tara_txt)
-    except:
-        tara_extra = 0
 
 # PUE LIBRE
 if modo_libre:
@@ -248,7 +234,7 @@ if st.button("REGISTRAR PESADA"):
     if peso_total > 0 and pue > 0:
 
         if "TINTA" in opcion:
-    tara_real = 0.030
+            tara_real = 0.030
 
         p_neto = peso_total - tara_real
 
@@ -296,7 +282,7 @@ if not df_hist.empty:
 
     if not df_hoy.empty:
 
-        df_hoy = df_hoy[["hora","art","cant","op"]]
+        df_hoy = df_hoy.reindex(columns=["hora","art","cant","op"])
 
         df_hoy.columns = ["Hora","Artículo","Cantidad","Operación"]
 
