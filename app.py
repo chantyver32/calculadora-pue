@@ -216,29 +216,16 @@ else:
 # ---------------------- BORRAR TODO ----------------------
 st.divider()
 st.subheader("⚠️ Administración de datos")
-
 st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
-
 confirmar = st.checkbox("Confirmo que quiero borrar todos los registros")
 
 if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
-
     if confirmar:
-
-        datos = {
-            "historial":[],
-            "totales":{},
-            "iniciales":{}
-        }
-
+        datos = {"historial":[],"totales":{},"iniciales":{}}
         guardar_db(datos)
-
         st.success("Todos los registros fueron eliminados")
-        st.rerun()
-
+        st.experimental_rerun()
     else:
         st.error("Debes confirmar la eliminación.")
-
-st.caption("Champlitte v3.1")
 
 st.caption("Champlitte v3.1")
