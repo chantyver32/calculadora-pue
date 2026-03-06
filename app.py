@@ -1,84 +1,84 @@
 import streamlit as st
 import pandas as pd
-from PIL import Image
 import os
 import json
 from datetime import datetime, timedelta
 
-# 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="PUE Champlitte v2.9", page_icon="🍰", layout="centered")
+# CONFIGURACIÓN
+st.set_page_config(page_title="PUE Champlitte v3.0", page_icon="🍰", layout="centered")
 
-# 2. CSS
-st.markdown(
-"""
+# CSS
+st.markdown("""
 <style>
 
 .stApp { background-color: #FFFFFF; }
 
 h1, h2, h3, p, label, .stMarkdown, span {
-    color: #000000 !important;
+color:#000000 !important;
 }
 
-header[data-testid="stHeader"] { visibility: hidden; }
+header[data-testid="stHeader"] { visibility:hidden; }
 
 input {
-    color: #FFFFFF !important; 
-    background-color: #444444 !important;
-    font-size: 20px !important;
-    font-weight: bold !important;
-    border-radius: 10px !important;
-    border: 2px solid #b08d15 !important;
+color:#FFFFFF !important;
+background-color:#444444 !important;
+font-size:20px !important;
+font-weight:bold !important;
+border-radius:10px !important;
+border:2px solid #b08d15 !important;
 }
 
 div.stButton > button {
-    width: 100%;
-    border-radius: 10px;
-    height: 3.5em;
-    background-color: #fff2bd !important;
-    color: #000000 !important;
-    font-weight: bold;
-    border: 1px solid #e0d5a6 !important;
+width:100%;
+border-radius:10px;
+height:3.5em;
+background-color:#fff2bd !important;
+color:#000000 !important;
+font-weight:bold;
+border:1px solid #e0d5a6 !important;
 }
 
-.confirmacion-pesaje {
-    background-color: #e8ffe8;
-    border: 2px solid #38a169;
-    border-radius: 12px;
-    padding: 15px;
-    margin-top: 10px;
-    font-size: 18px;
-    font-weight: bold;
-    color: #206b2d;
+.confirmacion {
+background:#e8ffe8;
+border:2px solid #38a169;
+border-radius:12px;
+padding:15px;
+margin-top:10px;
+font-size:18px;
+font-weight:bold;
+color:#206b2d;
 }
 
 </style>
-""",
-unsafe_allow_html=True
-)
+""",unsafe_allow_html=True)
 
-# BASE DE DATOS
-DB_FILE = "data_champlitte_v29.json"
+# BASE DATOS
+DB_FILE="data_champlitte_v30.json"
 
 def cargar_db():
     if os.path.exists(DB_FILE):
         try:
-            with open(DB_FILE, "r") as f:
+            with open(DB_FILE,"r") as f:
                 return json.load(f)
         except:
-            return {"historial": [], "totales": {}, "iniciales": {}}
-    return {"historial": [], "totales": {}, "iniciales": {}}
+            pass
+    return {"historial":[],"totales":{},"iniciales":{}}
 
 def guardar_db(datos):
-    with open(DB_FILE, "w") as f:
-        json.dump(datos, f, indent=4)
+    with open(DB_FILE,"w") as f:
+        json.dump(datos,f,indent=4)
+
+datos=cargar_db()
+hoy=datetime.now().strftime('%Y-%m-%d')
 
 # LOGO
 if os.path.exists("champlitte.jpg"):
-    st.image("champlitte.jpg", width=120)
+    st.image("champlitte.jpg",width=120)
 else:
     st.title("🍰 CHAMPLITTE")
 
-productos = {
+# PRODUCTOS
+productos={
 "":0,
 "BOLSA PAPEL CAFE #5":0.832,
 "BOLSA PAPEL CAFE #6":0.870,
@@ -108,101 +108,122 @@ productos = {
 "TINTA EPSON 544":0.078
 }
 
-datos = cargar_db()
-hoy = datetime.now().strftime('%Y-%m-%d')
-
 # LIMPIAR
 if st.button("🔄 LIMPIAR / BUSCAR OTRO"):
-    st.session_state.p_sel = ""
+    st.session_state.p_sel=""
     st.rerun()
 
-opcion = st.selectbox("SELECCIONA ARTÍCULO:", sorted(list(productos.keys())), key="p_sel")
+# SELECTOR
+opcion=st.selectbox("SELECCIONA ARTÍCULO",sorted(productos.keys()),key="p_sel")
 
-if opcion != "":
+# INVENTARIO
+if opcion!="":
 
     if hoy not in datos["iniciales"]:
-        datos["iniciales"][hoy] = {}
+        datos["iniciales"][hoy]={}
 
     if opcion not in datos["iniciales"][hoy]:
 
-        ayer = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        ini_ayer = datos.get("iniciales", {}).get(ayer, {}).get(opcion, 0.0)
-        tot_ayer = datos.get("totales", {}).get(ayer, {}).get(opcion, 0.0)
+        ayer=(datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
+        ini_ayer=datos.get("iniciales",{}).get(ayer,{}).get(opcion,0)
+        tot_ayer=datos.get("totales",{}).get(ayer,{}).get(opcion,0)
 
-        datos["iniciales"][hoy][opcion] = max(0.0, ini_ayer - tot_ayer)
+        datos["iniciales"][hoy][opcion]=max(0,ini_ayer-tot_ayer)
         guardar_db(datos)
 
-    val_ini = datos["iniciales"][hoy][opcion]
+    val_ini=datos["iniciales"][hoy][opcion]
 
     with st.expander("📝 Ajustar Inventario Inicial"):
 
-        nuevo_ini = st.number_input("Cantidad actual:", value=float(val_ini))
+        nuevo_ini=st.number_input("Cantidad actual",value=float(val_ini))
 
         if st.button("GUARDAR INICIAL"):
 
-            datos["iniciales"][hoy][opcion] = nuevo_ini
+            datos["iniciales"][hoy][opcion]=nuevo_ini
             guardar_db(datos)
             st.rerun()
 
-    st.write(f"### ⚖️ Registro: {opcion}")
+# REGISTRO
+st.write(f"### ⚖️ Registro: {opcion if opcion!='' else 'Modo Libre'}")
 
-    pue = productos[opcion]
+modo_libre = opcion==""
 
-    col1,col2 = st.columns(2)
+if modo_libre:
+    st.info("Modo libre activado")
 
-    with col1:
-        peso_total = st.number_input("Peso Báscula:",value=0.0,format="%.3f")
+pue = productos.get(opcion,0)
 
-    with col2:
-        t_cont = st.checkbox("Contenedor")
-        t_bisag = st.checkbox("Bisagra")
+col1,col2=st.columns(2)
 
-    if st.button("REGISTRAR PESADA"):
+with col1:
+    peso_total=st.number_input("Peso Báscula",value=0.0,format="%.3f")
 
-        if peso_total > 0:
+with col2:
+    t_bisag=st.checkbox("Bisagra (-0.045)")
+    t_cont=st.checkbox("Contenedor (-0.019)")
 
-            tara_calc = (0.045 if t_cont else 0) + (0.016 if t_bisag else 0)
+tara_personal=st.checkbox("Tara personalizada")
 
-            tara_real = 0.030 if "TINTA" in opcion else tara_calc
+tara_extra=0.0
 
-            p_neto = peso_total - tara_real
+if tara_personal:
+    tara_extra=st.number_input("Peso tara personalizada",value=0.0,format="%.3f")
 
-            if p_neto > 0:
+# PUE LIBRE
+if modo_libre:
+    pue=st.number_input("PUE personalizado",value=1.0,format="%.6f")
 
-                cant_res = p_neto / pue
+# REGISTRAR
+if st.button("REGISTRAR PESADA"):
 
-                operacion = f"({peso_total:.3f} - {tara_real:.3f}) / {pue}"
+    if peso_total>0 and pue>0:
 
-                datos["historial"].append({
+        tara_calc=(0.045 if t_bisag else 0)+(0.019 if t_cont else 0)+tara_extra
 
-                    "fecha":hoy,
-                    "hora":datetime.now().strftime("%H:%M"),
-                    "art":opcion,
-                    "cant":round(cant_res,2),
-                    "op":operacion
+        tara_real=0.030 if "TINTA" in opcion else tara_calc
 
-                })
+        p_neto=peso_total-tara_real
 
-                if hoy not in datos["totales"]:
-                    datos["totales"][hoy]={}
+        if p_neto>0:
 
-                datos["totales"][hoy][opcion]=datos["totales"][hoy].get(opcion,0)+cant_res
+            cant_res=p_neto/pue
 
-                guardar_db(datos)
+            operacion=f"({peso_total:.3f} - {tara_real:.3f}) / {pue}"
 
-                st.markdown(f"""
-                <div class="confirmacion-pesaje">
-                ✅ PESADA REGISTRADA
+            articulo=opcion if opcion!="" else "MODO LIBRE"
 
-                Artículo: {opcion}  
-                Resultado: {cant_res:.2f} unidades  
+            datos["historial"].append({
 
-                Operación: {operacion}
-                </div>
-                """,unsafe_allow_html=True)
+                "fecha":hoy,
+                "hora":datetime.now().strftime("%H:%M"),
+                "art":articulo,
+                "cant":round(cant_res,2),
+                "op":operacion
+
+            })
+
+            if hoy not in datos["totales"]:
+                datos["totales"][hoy]={}
+
+            datos["totales"][hoy][articulo]=datos["totales"][hoy].get(articulo,0)+cant_res
+
+            guardar_db(datos)
+
+            st.markdown(f"""
+            <div class="confirmacion">
+
+            ✅ PESADA REGISTRADA
+
+            Artículo: {articulo}
+
+            Resultado: {cant_res:.2f}
+
+            Operación: {operacion}
+
+            </div>
+            """,unsafe_allow_html=True)
 
 # HISTORIAL
-
 st.divider()
 st.subheader("🧾 Historial de Pesajes")
 
@@ -220,8 +241,7 @@ if not df_hist.empty:
 
         st.table(df_hoy)
 
-# TABLA RESUMEN
-
+# RESUMEN INVENTARIO
 st.divider()
 st.subheader("📊 Resumen Inventario")
 
@@ -257,4 +277,4 @@ else:
 
     st.info("Sin movimientos hoy")
 
-st.caption("Champlitte v2.9")
+st.caption("Champlitte v3.0")
