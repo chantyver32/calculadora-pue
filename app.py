@@ -17,9 +17,7 @@ h1, h2, h3, p, label, .stMarkdown, span {
 color:#000000 !important;
 }
 
-header[data-testid="stHeader"] {
-visibility:hidden;
-}
+header[data-testid="stHeader"] { visibility:hidden; }
 
 input {
 color:#FFFFFF !important;
@@ -58,32 +56,32 @@ color:#206b2d;
 """, unsafe_allow_html=True)
 
 # BASE DATOS
-DB_FILE="data_champlitte_v31.json"
+DB_FILE = "data_champlitte_v31.json"
 
 def cargar_db():
     if os.path.exists(DB_FILE):
         try:
-            with open(DB_FILE,"r") as f:
+            with open(DB_FILE, "r") as f:
                 return json.load(f)
         except:
             pass
-    return {"historial":[],"totales":{},"iniciales":{}}
+    return {"historial": [], "totales": {}, "iniciales": {}}
 
 def guardar_db(datos):
-    with open(DB_FILE,"w") as f:
-        json.dump(datos,f,indent=4)
+    with open(DB_FILE, "w") as f:
+        json.dump(datos, f, indent=4)
 
-datos=cargar_db()
-hoy=datetime.now().strftime('%Y-%m-%d')
+datos = cargar_db()
+hoy = datetime.now().strftime('%Y-%m-%d')
 
 # LOGO
 if os.path.exists("champlitte.jpg"):
-    st.image("champlitte.jpg",width=120)
+    st.image("champlitte.jpg", width=120)
 else:
     st.title("🍰 CHAMPLITTE")
 
 # PRODUCTOS
-productos={
+productos = {
 "":0,
 "BOLSA PAPEL CAFE #5":0.832,
 "BOLSA PAPEL CAFE #6":0.870,
@@ -118,156 +116,137 @@ if "reset_select" not in st.session_state:
     st.session_state.reset_select = 0
 
 if "peso_input" not in st.session_state:
-    st.session_state.peso_input=""
+    st.session_state.peso_input = ""
 
 if "tara_input" not in st.session_state:
-    st.session_state.tara_input=""
+    st.session_state.tara_input = ""
 
 if "tara_check" not in st.session_state:
-    st.session_state.tara_check=False
+    st.session_state.tara_check = False
 
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
-
     st.session_state.reset_select += 1
-    st.session_state.peso_input=""
-    st.session_state.tara_input=""
-    st.session_state.tara_check=False
-
+    st.session_state.peso_input = ""
+    st.session_state.tara_input = ""
+    st.session_state.tara_check = False
     st.rerun()
 
 # SELECTOR
-opcion=st.selectbox(
-"SELECCIONA ARTÍCULO",
-sorted(productos.keys()),
-key=f"p_sel_{st.session_state.reset_select}"
+opcion = st.selectbox(
+    "SELECCIONA ARTÍCULO",
+    sorted(productos.keys()),
+    key=f"p_sel_{st.session_state.reset_select}"
 )
 
 # INVENTARIO
-if opcion!="":
+if opcion != "":
 
     if hoy not in datos["iniciales"]:
-        datos["iniciales"][hoy]={}
+        datos["iniciales"][hoy] = {}
 
     if opcion not in datos["iniciales"][hoy]:
 
-        ayer=(datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
+        ayer = (datetime.now()-timedelta(days=1)).strftime('%Y-%m-%d')
 
-        ini_ayer=datos.get("iniciales",{}).get(ayer,{}).get(opcion,0)
-        tot_ayer=datos.get("totales",{}).get(ayer,{}).get(opcion,0)
+        ini_ayer = datos.get("iniciales",{}).get(ayer,{}).get(opcion,0)
+        tot_ayer = datos.get("totales",{}).get(ayer,{}).get(opcion,0)
 
-        datos["iniciales"][hoy][opcion]=max(0,ini_ayer-tot_ayer)
+        datos["iniciales"][hoy][opcion] = max(0, ini_ayer - tot_ayer)
 
         guardar_db(datos)
 
     with st.expander("📝 Ajustar Inventario Inicial"):
 
-        ini_txt=st.text_input("Cantidad actual",value="")
+        ini_txt = st.text_input("Cantidad actual", value="")
 
         if st.button("GUARDAR INICIAL"):
 
             try:
-                nuevo_ini=float(ini_txt)
+                nuevo_ini = float(ini_txt)
             except:
-                nuevo_ini=0
+                nuevo_ini = 0
 
-            datos["iniciales"][hoy][opcion]=nuevo_ini
+            datos["iniciales"][hoy][opcion] = nuevo_ini
             guardar_db(datos)
             st.rerun()
 
 # REGISTRO
 st.write(f"### ⚖️ Registro: {opcion if opcion!='' else 'Modo Libre'}")
 
-modo_libre=opcion==""
+modo_libre = opcion == ""
 
 if modo_libre:
     st.info("Modo libre activado")
 
-pue=productos.get(opcion,0)
+pue = productos.get(opcion,0)
 
-col1,col2=st.columns(2)
+col1,col2 = st.columns(2)
 
 with col1:
 
-    peso_txt=st.text_input(
-    "Peso Báscula",
-    key="peso_input"
+    peso_txt = st.text_input(
+        "Peso Báscula",
+        key="peso_input"
     )
 
     try:
-        peso_total=float(peso_txt)
+        peso_total = float(peso_txt)
     except:
-        peso_total=0
+        peso_total = 0
 
 with col2:
 
-    t_bisag=st.checkbox("Bisagra (-0.045)")
-    t_cont=st.checkbox("Contenedor (-0.019)")
+    t_bisag = st.checkbox("Bisagra (-0.045)")
+    t_cont = st.checkbox("Contenedor (-0.019)")
 
-tara_personal=st.checkbox(
-"Tara personalizada",
-key="tara_check"
-)
+    tara_personal = st.checkbox(
+        "Tara personalizada",
+        key="tara_check"
+    )
 
-tara_extra=0
+tara_extra = 0
 
 if tara_personal:
 
-    tara_txt=st.text_input(
-    "Peso tara personalizada",
-    key="tara_input"
+    tara_txt = st.text_input(
+        "Peso tara personalizada",
+        key="tara_input"
     )
 
     try:
-        tara_extra=float(tara_txt)
+        tara_extra = float(tara_txt)
     except:
-        tara_extra=0
+        tara_extra = 0
 
 # PUE LIBRE
 if modo_libre:
 
-    pue_txt=st.text_input("PUE personalizado",value="")
+    pue_txt = st.text_input("PUE personalizado", value="")
 
     try:
-        pue=float(pue_txt)
+        pue = float(pue_txt)
     except:
-        pue=0
+        pue = 0
 
 # REGISTRAR
 if st.button("REGISTRAR PESADA"):
 
-    if peso_total>0 and pue>0:
+    if peso_total > 0 and pue > 0:
 
-        tara_calc = (0.045 if t_bisag else 0) + (0.019 if t_cont else 0)
+        tara_calc = (0.045 if t_bisag else 0) + (0.019 if t_cont else 0) + tara_extra
 
-# agregar tara personalizada
-tara_real = tara_extra
+        tara_real = 0.030 if "TINTA" in opcion else tara_calc
 
-# excepción tinta
-if "TINTA" in opcion:
-    tara_real = 0.030 + tara_extra
+        p_neto = peso_total - tara_real
 
-p_neto = peso_total - tara_real
+        if p_neto > 0:
 
+            cant_res = p_neto / pue
 
+            operacion = f"({peso_total:.3f} - {tara_real:.3f}) / {pue}"
 
-
-
-
-
-
-
-
-
-
-
-
-
-        if p_neto>0:
-
-            cant_res=p_neto/pue
-            operacion=f"({peso_total:.3f} - {tara_real:.3f}) / {pue}"
-            articulo=opcion if opcion!="" else "MODO LIBRE"
+            articulo = opcion if opcion!="" else "MODO LIBRE"
 
             datos["historial"].append({
                 "fecha":hoy,
@@ -278,9 +257,9 @@ p_neto = peso_total - tara_real
             })
 
             if hoy not in datos["totales"]:
-                datos["totales"][hoy]={}
+                datos["totales"][hoy] = {}
 
-            datos["totales"][hoy][articulo]=datos["totales"][hoy].get(articulo,0)+cant_res
+            datos["totales"][hoy][articulo] = datos["totales"][hoy].get(articulo,0) + cant_res
 
             guardar_db(datos)
 
@@ -291,22 +270,23 @@ p_neto = peso_total - tara_real
             Resultado: {cant_res:.2f}<br>
             Operación: {operacion}
             </div>
-            """,unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
 # HISTORIAL
 st.divider()
 st.subheader("🧾 Historial de Pesajes")
 
-df_hist=pd.DataFrame(datos.get("historial",[]))
+df_hist = pd.DataFrame(datos.get("historial",[]))
 
 if not df_hist.empty:
 
-    df_hoy=df_hist[df_hist["fecha"]==hoy]
+    df_hoy = df_hist[df_hist["fecha"] == hoy]
 
     if not df_hoy.empty:
 
-        df_hoy=df_hoy[["hora","art","cant","op"]]
-        df_hoy.columns=["Hora","Artículo","Cantidad","Operación"]
+        df_hoy = df_hoy[["hora","art","cant","op"]]
+
+        df_hoy.columns = ["Hora","Artículo","Cantidad","Operación"]
 
         st.table(df_hoy)
 
@@ -314,18 +294,19 @@ if not df_hist.empty:
 st.divider()
 st.subheader("📊 Resumen Inventario")
 
-productos_activos=set(
-list(datos.get("iniciales",{}).get(hoy,{}).keys())+
-list(datos.get("totales",{}).get(hoy,{}).keys())
+productos_activos = set(
+    list(datos.get("iniciales",{}).get(hoy,{}).keys()) +
+    list(datos.get("totales",{}).get(hoy,{}).keys())
 )
 
-tabla=[]
+tabla = []
 
 for art in productos_activos:
 
-    ini=datos.get("iniciales",{}).get(hoy,{}).get(art,0)
-    consumo=datos.get("totales",{}).get(hoy,{}).get(art,0)
-    saldo=ini-consumo
+    ini = datos.get("iniciales",{}).get(hoy,{}).get(art,0)
+    consumo = datos.get("totales",{}).get(hoy,{}).get(art,0)
+
+    saldo = ini - consumo
 
     tabla.append({
         "PRODUCTO":art,
@@ -335,8 +316,11 @@ for art in productos_activos:
     })
 
 if tabla:
-    df=pd.DataFrame(tabla)
-    st.dataframe(df,use_container_width=True,hide_index=True)
+
+    df = pd.DataFrame(tabla)
+
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
 else:
     st.info("Sin movimientos hoy")
 
@@ -346,13 +330,13 @@ st.subheader("⚠️ Administración de datos")
 
 st.warning("Esta acción borrará TODO el historial y reiniciará el inventario.")
 
-confirmar=st.checkbox("Confirmo que quiero borrar todos los registros")
+confirmar = st.checkbox("Confirmo que quiero borrar todos los registros")
 
 if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
 
     if confirmar:
 
-        datos={
+        datos = {
             "historial":[],
             "totales":{},
             "iniciales":{}
@@ -361,6 +345,7 @@ if st.button("🗑 BORRAR TODOS LOS REGISTROS"):
         guardar_db(datos)
 
         st.success("Todos los registros fueron eliminados")
+
         st.rerun()
 
     else:
