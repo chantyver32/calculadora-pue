@@ -5,19 +5,15 @@ import os
 import json
 from datetime import datetime, timedelta
 
-# 1. CONFIGURACIÓN DE PÁGINA (Layout centrado es mejor para móvil)
+# 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="PUE Champlitte v2.8", page_icon="🍰", layout="centered")
 
-# 2. CSS: OPTIMIZACIÓN MÓVIL Y ESTILO V1.1
+# 2. CSS: OPTIMIZACIÓN MÓVIL Y ESTILO LIMPIO
 st.markdown(
     """
     <style>
-    /* Evitar scroll horizontal y ajustar fondo */
-    .stApp { 
-        background-color: #FFFFFF; 
-    }
+    .stApp { background-color: #FFFFFF; }
     
-    /* Ajuste de contenedor principal para móviles */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
@@ -25,61 +21,42 @@ st.markdown(
         padding-right: 0.5rem !important;
     }
 
-    /* Texto general en Negro */
     .stApp, p, label, .stMarkdown, div[data-testid="stMarkdownContainer"] p {
         color: #000000 !important;
     }
 
     header[data-testid="stHeader"] { visibility: hidden; }
 
-    /* INPUTS: Optimizados para dedos */
+    /* INPUTS: Listos para escribir */
     input {
         color: #000000 !important;
         background-color: #FFFFFF !important;
-        font-size: 18px !important; /* Evita el zoom automático en iOS */
-        height: 50px !important;
+        font-size: 20px !important; 
+        height: 55px !important;
         border-radius: 10px !important;
-        border: 1px solid #e0d5a6 !important;
+        border: 2px solid #e0d5a6 !important;
     }
 
-    /* BOTONES: Más grandes y fáciles de tocar (Touch-friendly) */
+    /* BOTONES GRANDES TOUCH */
     div.stButton > button {
         width: 100% !important;
         border-radius: 12px !important;
-        height: 4em !important; /* Más altos para móviles */
+        height: 4em !important;
         background-color: #fff2bd !important;
         color: #000000 !important;
         font-weight: bold !important;
         font-size: 18px !important;
         border: 1px solid #e0d5a6 !important;
         margin-bottom: 10px !important;
-        transition: transform 0.1s;
     }
     div.stButton > button:active { transform: scale(0.95); }
     
-    /* MÉTRICAS: Ajustadas para que no se desborden en pantallas pequeñas */
+    /* MÉTRICAS */
     div[data-testid="stMetricValue"] { 
-        font-size: 38px !important; 
+        font-size: 40px !important; 
         color: #b08d15 !important; 
         font-weight: 900 !important;
-        line-height: 1.2 !important;
     }
-    
-    div[data-testid="stMetricLabel"] {
-        font-size: 14px !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    /* Ajuste de columnas en móvil (forzar que no sean demasiado estrechas) */
-    [data-testid="column"] {
-        width: 100% !important;
-        flex: 1 1 calc(50% - 1rem) !important;
-        min-width: 150px !important;
-    }
-
-    /* Ocultar decoraciones innecesarias en móvil */
-    .stDivider { margin: 1rem 0 !important; }
     </style>
     """, 
     unsafe_allow_html=True
@@ -98,17 +75,11 @@ def cargar_db():
 def guardar_db(datos):
     with open(DB_FILE, "w") as f: json.dump(datos, f)
 
-def limpiar_campos():
-    st.session_state["peso_input"] = None
-    # No limpiamos el selector de producto para agilizar el re-ingreso
-
 # --- LOGO ---
-col_logo, _ = st.columns([1, 1])
-with col_logo:
-    try:
-        st.image(Image.open("champlitte.jpg"), width=100)
-    except:
-        st.write("### 🍰 CHAMPLITTE")
+try:
+    st.image(Image.open("champlitte.jpg"), width=100)
+except:
+    st.write("### 🍰 CHAMPLITTE")
 
 # 3. PRODUCTOS
 productos = {
@@ -128,23 +99,25 @@ productos = {
     "HOJAS BLANCAS PQ/500": 2.146, "TINTA EPSON 544": 0.078
 }
 
-# --- INTERFAZ PRINCIPAL ---
+# --- INTERFAZ ---
 opcion = st.selectbox("ARTÍCULO:", sorted(list(productos.keys())), key="p_sel")
 
 if opcion != "":
     datos = cargar_db()
     hoy = datetime.now().strftime('%Y-%m-%d')
     
-    # Manejo de Inventario Inicial
+    # Inventario Inicial
     if hoy not in datos["iniciales"]: datos["iniciales"][hoy] = {}
     val_ini = datos["iniciales"][hoy].get(opcion, 0.0)
 
-    with st.expander("📝 AJUSTAR INICIAL"):
-        nuevo_ini = st.number_input("CANTIDAD INICIAL:", value=float(val_ini))
-        if st.button("GUARDAR INICIAL"):
-            datos["iniciales"][hoy][opcion] = nuevo_ini
-            guardar_db(datos)
-            st.rerun()
+    with st.expander("📝 CONFIGURAR INICIAL"):
+        # value=None hace que el campo esté listo para recibir texto nuevo directamente
+        nuevo_ini = st.number_input(f"Inicial actual: {val_ini}", value=None, placeholder="Escribe cantidad inicial...", key="input_ini")
+        if st.button("ACTUALIZAR INICIAL"):
+            if nuevo_ini is not None:
+                datos["iniciales"][hoy][opcion] = nuevo_ini
+                guardar_db(datos)
+                st.rerun()
 
     st.divider()
 
@@ -153,8 +126,8 @@ if opcion != "":
     pue = productos[opcion]
     es_tinta = "TINTA" in opcion
 
-    # Inputs uno debajo del otro para mejor manejo en móvil
-    peso_total = st.number_input("PESO TOTAL:", format="%.3f", step=0.001, value=None, placeholder="0.000", key="peso_input")
+    # value=None permite que no tengas que borrar el 0.000
+    peso_total = st.number_input("PESO BÁSCULA:", format="%.3f", step=0.001, value=None, placeholder="0.000", key="peso_input")
     
     if not es_tinta:
         col_t1, col_t2 = st.columns(2)
@@ -163,7 +136,6 @@ if opcion != "":
     else:
         st.info("Descuento tinta: 0.030")
 
-    # Botones grandes
     if st.button("CALCULAR Y REGISTRAR"):
         if peso_total is not None:
             tara = (0.045 if not es_tinta and t_cont else 0) + (0.016 if not es_tinta and t_bisag else 0)
@@ -181,7 +153,7 @@ if opcion != "":
                 guardar_db(datos)
                 st.rerun()
 
-    # Resultados en métricas grandes
+    # Resultados
     total_salida = datos["totales"].get(hoy, {}).get(opcion, 0.0)
     disponible = max(0.0, val_ini - total_salida)
 
@@ -189,11 +161,6 @@ if opcion != "":
     m1, m2 = st.columns(2)
     m1.metric("SALIDA HOY", f"{total_salida:,.1f}")
     m2.metric("DISPONIBLE", f"{disponible:,.1f}")
-
-    if st.checkbox("Ver historial hoy"):
-        df = pd.DataFrame([h for h in datos["historial"] if h["fecha"] == hoy and h["art"] == opcion])
-        if not df.empty:
-            st.dataframe(df[["hora", "cant"]].sort_values("hora", ascending=False), use_container_width=True)
 
 st.markdown("---")
 if st.button("🗑️ REINICIAR DÍA"):
@@ -204,4 +171,4 @@ if st.button("🗑️ REINICIAR DÍA"):
     guardar_db(datos)
     st.rerun()
 
-st.caption("v2.8 - Móvil Optimizado 🍰")
+st.caption("v2.8 - Sin necesidad de borrar ceros 🍰")
