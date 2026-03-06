@@ -21,7 +21,6 @@ header[data-testid="stHeader"] {
 visibility:hidden;
 }
 
-/* INPUT NUMERICOS */
 input {
 color:#FFFFFF !important;
 background-color:#444444 !important;
@@ -29,13 +28,12 @@ border-radius:10px !important;
 border:2px solid #b08d15 !important;
 }
 
-/* SELECT PRODUCTOS NORMAL */
+/* SELECT NORMAL */
 div[data-baseweb="select"] *{
 font-size:14px !important;
-cursor:default !important;
+cursor:pointer !important;
 }
 
-/* BOTONES */
 div.stButton > button {
 width:100%;
 border-radius:10px;
@@ -118,7 +116,7 @@ productos={
 
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
-    st.session_state.p_sel=""
+    st.session_state.clear()
     st.rerun()
 
 # SELECTOR
@@ -145,14 +143,17 @@ if opcion!="":
 
     with st.expander("📝 Ajustar Inventario Inicial"):
 
-        nuevo_ini=st.number_input(
+        ini_txt = st.text_input(
             "Cantidad actual",
-            value=0.0,
-            format="%.3f",
-            key=f"ini_{opcion}_{hoy}"
+            value=""
         )
 
         if st.button("GUARDAR INICIAL"):
+
+            try:
+                nuevo_ini=float(ini_txt)
+            except:
+                nuevo_ini=0
 
             datos["iniciales"][hoy][opcion]=nuevo_ini
             guardar_db(datos)
@@ -171,12 +172,12 @@ pue = productos.get(opcion,0)
 col1,col2=st.columns(2)
 
 with col1:
-    peso_total=st.number_input(
-        "Peso Báscula",
-        value=0.0,
-        format="%.3f",
-        key=f"peso_{hoy}"
-    )
+    peso_txt = st.text_input("Peso Báscula",value="")
+
+    try:
+        peso_total=float(peso_txt)
+    except:
+        peso_total=0
 
 with col2:
     t_bisag=st.checkbox("Bisagra (-0.045)")
@@ -184,24 +185,26 @@ with col2:
 
 tara_personal=st.checkbox("Tara personalizada")
 
-tara_extra=0.0
+tara_extra=0
 
 if tara_personal:
-    tara_extra=st.number_input(
-        "Peso tara personalizada",
-        value=0.0,
-        format="%.3f",
-        key=f"tara_{hoy}"
-    )
+
+    tara_txt=st.text_input("Peso tara personalizada",value="")
+
+    try:
+        tara_extra=float(tara_txt)
+    except:
+        tara_extra=0
 
 # PUE LIBRE
 if modo_libre:
-    pue=st.number_input(
-        "PUE personalizado",
-        value=0.0,
-        format="%.6f",
-        key=f"pue_{hoy}"
-    )
+
+    pue_txt=st.text_input("PUE personalizado",value="")
+
+    try:
+        pue=float(pue_txt)
+    except:
+        pue=0
 
 # REGISTRAR
 if st.button("REGISTRAR PESADA"):
