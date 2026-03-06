@@ -113,11 +113,13 @@ productos={
 "TINTA EPSON 544":0.078
 }
 
+# CONTROL RESET SELECT
+if "reset_select" not in st.session_state:
+    st.session_state.reset_select = 0
+
 # LIMPIAR
 if st.button("🔄 LIMPIAR / MODO MANUAL"):
-    if "p_sel" in st.session_state:
-        del st.session_state["p_sel"]
-    st.session_state.reset_select += 0
+    st.session_state.reset_select += 1
     st.rerun()
 
 # SELECTOR
@@ -125,6 +127,7 @@ opcion = st.selectbox(
     "SELECCIONA ARTÍCULO",
     sorted(productos.keys()),
     key=f"p_sel_{st.session_state.reset_select}"
+
 )
 
 # INVENTARIO
