@@ -10,38 +10,41 @@ st.set_page_config(page_title="PUE Champlitte v3.1", page_icon="🍰", layout="c
 # ---------------------- CSS ----------------------
 st.markdown("""
 <style>
-/* Fondo general de la app */
-.stApp { background-color: #FFFFFF; }
+/* Fondo general inspirado en el logo de Champlitte */
+.stApp { background-color: #FFF8EE; }
 
-/* Texto general */
-h1, h2, h3, p, label, .stMarkdown, span { color:#000000 !important; }
+/* Texto general elegante */
+h1, h2, h3, p, label, .stMarkdown, span {
+    color: #4B2E0F !important;
+    font-family: 'Georgia', serif;
+}
 
 /* Ocultar header */
 header[data-testid="stHeader"] { visibility:hidden; }
 
-/* Inputs y textarea: color blanco y fondo gris, sin cambios al hacer foco */
+/* Inputs y textarea con estilo pastel y bordes */
 input, textarea {
-    color:#FFFFFF !important;
-    background-color:#444444 !important;
-    border-radius:10px !important;
-    border:2px solid #b08d15 !important;
+    color:#4B2E0F !important;
+    background-color:#F7E6C4 !important;
+    border-radius:12px !important;
+    border:2px solid #D7B377 !important;
     box-shadow:none !important;
 }
 input:focus, textarea:focus, input:hover, textarea:hover {
-    background-color:#444444 !important;
-    color:#FFFFFF !important;
+    background-color:#F7E6C4 !important;
+    color:#4B2E0F !important;
     box-shadow:none !important;
 }
 
-/* Placeholder */
-input::placeholder { color:#DDDDDD !important; }
+/* Placeholder suave */
+input::placeholder { color:#BC9975 !important; }
 
-/* Todos los selectbox, multiselect y radio buttons */
+/* Select, radio y checkbox con colores cálidos */
 div[data-baseweb="select"], div[data-baseweb="radio"], div[data-baseweb="checkbox"] {
-    background-color:#444444 !important;
-    color:#FFFFFF !important;
+    background-color:#F7E6C4 !important;
+    color:#4B2E0F !important;
     border-radius:10px !important;
-    border:2px solid #b08d15 !important;
+    border:2px solid #D7B377 !important;
     box-shadow:none !important;
 }
 div[data-baseweb="select"]:hover,
@@ -50,40 +53,40 @@ div[data-baseweb="radio"]:hover,
 div[data-baseweb="radio"]:focus,
 div[data-baseweb="checkbox"]:hover,
 div[data-baseweb="checkbox"]:focus {
-    background-color:#444444 !important;
-    color:#FFFFFF !important;
+    background-color:#F7E6C4 !important;
+    color:#4B2E0F !important;
     box-shadow:none !important;
 }
 
-/* Botones */
+/* Botones estilo premium pastel */
 div.stButton > button {
     width:100%; 
-    border-radius:10px; 
+    border-radius:12px; 
     height:3.5em; 
-    background-color:#fff2bd !important; 
-    color:#000000 !important; 
+    background-color:#D7B377 !important; 
+    color:#4B2E0F !important; 
     font-weight:bold; 
-    border:1px solid #e0d5a6 !important;
+    border:1px solid #C9A65F !important;
     box-shadow:none !important;
 }
 div.stButton > button:hover,
 div.stButton > button:focus,
 div.stButton > button:active {
-    background-color:#fff2bd !important;
-    color:#000000 !important;
+    background-color:#D7B377 !important;
+    color:#4B2E0F !important;
     box-shadow:none !important;
 }
 
-/* Confirmación */
+/* Mensajes de confirmación */
 .confirmacion {
-    background:#e8ffe8; 
-    border:2px solid #38a169; 
+    background:#FFF8EE; 
+    border:2px solid #4B2E0F; 
     border-radius:12px; 
     padding:15px;
     margin-top:10px; 
     font-size:18px; 
     font-weight:bold; 
-    color:#206b2d;
+    color:#4B2E0F;
 }
 </style>
 """, unsafe_allow_html=True)
