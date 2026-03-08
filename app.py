@@ -124,7 +124,7 @@ with tab_calc:
                       (fecha_mexico, art_sel, peso_bruto, tara_total, pue_base, resultado, formula))
             conn.commit()
             st.balloons()
-            st.success(f"✅ Registrado con éxito: {resultado:.2f} unidades.")
+            st.success(f"✅ Registrado con éxito: {resultado:.2f}")
         else:
             st.error("❌ Error: Todos los campos (incluyendo PUE si es nuevo) deben estar llenos.")
 
