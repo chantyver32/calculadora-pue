@@ -141,7 +141,7 @@ with tab_historial:
             df_art = df[df['articulo'] == art_filtro]
             total_real = df_art['resultado_pue'].sum()
             
-            st.subheader(f"Detalle Matemático: {art_filtro}")
+            st.subheader(f"{art_filtro}")
             # Tabla estilizada
             st.table(df_art[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
                 'fecha_hora': 'Fecha/Hora', 'peso_bruto': 'P. Bruto', 'tara': 'Tara Total', 'pue': 'PUE Usado', 'detalle_formula': 'Operación', 'resultado_pue': 'Resultado'
@@ -151,7 +151,7 @@ with tab_historial:
             
             c_res1, c_res2, c_res3 = st.columns(3)
             with c_res1:
-                st.metric("TOTAL CALCULADO", f"{total_real:.2f} uds")
+                st.metric("TOTAL CALCULADO", f"{total_real:.2f}")
             with c_res2:
                 stock_teorico = st.number_input("Valor en Sistema (Stock):", value=None, placeholder="Ingrese stock...")
             
