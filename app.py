@@ -101,17 +101,20 @@ with tab_calc:
         c1, c2, c3 = st.columns(3)
         with c1: t_cont = st.checkbox("Contenedor (0.045)")
         with c2: t_bis = st.checkbox("Bisagra (0.160)")
-        with c3: t_man = st.number_input("Tara Adicional / Manual:", value=0.000, format="%.3f")
+        with c3: 
+            # Ajuste: value=None y placeholder hace que el campo inicie vacío
+            t_man = st.number_input("Tara Adicional:", value=None, format="%.3f", placeholder="0.000")
         
         btn_add = st.form_submit_button("➕ AGREGAR AL DESGLOSE")
 
     if btn_add:
         if art_sel != "" and peso_t is not None:
             pue = productos.get(art_sel, 1.0)
-            tara_total = (0.045 if t_cont else 0) + (0.16 if t_bis else 0) + t_man
+            # Manejo de tara manual si es None
+            t_man_val = t_man if t_man is not None else 0.0
+            tara_total = (0.045 if t_cont else 0) + (0.16 if t_bis else 0) + t_man_val
             peso_neto = peso_t - tara_total
             
-            # Caso especial TINTA
             if "TINTA" in art_sel:
                 envase = 0.030
                 resultado = (peso_neto - envase) / pue
@@ -142,7 +145,7 @@ with tab_calc:
         with c_m1:
             st.metric("TOTAL CALCULADO", f"{total_s:.2f}")
         with c_m2:
-            val_teorico = st.number_input("Valor Teórico (Stock):", value=None, placeholder="0.00")
+            val_teorico = st.number_input("Valor Teórico (Stock):", value=None, placeholder="Escriba valor...")
         
         if val_teorico is not None:
             dif = total_s - val_teorico
@@ -172,7 +175,6 @@ with tab_db:
         opciones = [f"ID {row['id']} - {row['articulo']} ({row['fecha']})" for _, row in df_db.iterrows()]
         seleccion = st.selectbox("Seleccione el registro a enviar:", opciones)
         
-        # Procesar datos para el mensaje
         id_sel = int(seleccion.split(" ")[1])
         reg = df_db[df_db['id'] == id_sel].iloc[0]
         
@@ -189,7 +191,6 @@ with tab_db:
         
         url_wa = f"https://wa.me/522283530069?text={urllib.parse.quote(msg)}"
 
-        # BOTÓN VERDE ESTILO WHATSAPP
         st.markdown(f"""
             <style>
             .btn-wa {{
@@ -220,7 +221,6 @@ with tab_db:
         st.divider()
         st.dataframe(df_db, use_container_width=True)
         
-        # Botones de exportación y limpieza
         col_ex, col_del = st.columns(2)
         with col_ex:
             csv = df_db.to_csv(index=False).encode('utf-8')
