@@ -3,23 +3,24 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import urllib.parse
+import pytz # <--- MODIFICACIÓN 1: Importamos la librería de zonas horarias
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
 
-# Estilos CSS para el botón de WhatsApp (Pequeño, sin subrayado, sin cursiva)
+# Estilos CSS para el botón de WhatsApp
 st.markdown("""
     <style>
     .btn-wa {
         background-color: #25D366;
         color: white !important;
-        padding: 8px 16px;
+        padding: 6px 14px; /* <--- MODIFICACIÓN: Más pequeño */
         text-align: center;
         text-decoration: none !important;
         display: inline-block;
-        font-size: 14px;
+        font-size: 13px; /* <--- MODIFICACIÓN: Más pequeño */
         font-weight: bold;
-        font-style: normal !important;
+        font-style: normal !important; /* <--- MODIFICACIÓN: Sin cursiva */
         border-radius: 5px;
         transition: 0.3s;
         border: none;
@@ -33,7 +34,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. BASE DE DATOS (Almacena pesajes individuales)
+# 2. BASE DE DATOS
 conn = sqlite3.connect("pue_champlitte_v2.db", check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
@@ -41,7 +42,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales
               resultado_pue REAL, detalle_formula TEXT)''')
 conn.commit()
 
-# 3. DICCIONARIO DE PRODUCTOS
+# 3. DICCIONARIO DE PRODUCTOS (Se mantiene igual)
 productos = {
     "": 0, "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
     "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364, "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
@@ -77,7 +78,7 @@ with tab_calc:
         st.write("Taras:")
         c1, c2, c3 = st.columns(3)
         with c1: t_cont = st.checkbox("Contenedor (0.045)")
-        with c2: t_bis = st.checkbox("Bisagra (0.160)")
+        with c2: t_bis = st.checkbox("Bisagra (0.016)")
         with c3: t_manual = st.number_input("Manual:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("💾 GUARDAR PESAJE")
@@ -96,10 +97,14 @@ with tab_calc:
                 res = pn / pue
                 formula = f"{pn:.3f}/{pue}"
             
+            # --- MODIFICACIÓN 2: LÓGICA DE HORA MÉXICO ---
+            zona_mexico = pytz.timezone('America/Mexico_City')
+            fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
+            
             c.execute("INSERT INTO pesajes_individuales (fecha, articulo, resultado_pue, detalle_formula) VALUES (?,?,?,?)",
-                      (datetime.now().strftime("%Y-%m-%d %H:%M"), art_sel, res, formula))
+                      (fecha_mexico, art_sel, res, formula))
             conn.commit()
-            st.success(f"Registrado: {res:.2f} de {art_sel}")
+            st.success(f"Registrado ({fecha_mexico}): {res:.2f} de {art_sel}")
         else:
             st.warning("Faltan datos.")
 
@@ -110,11 +115,9 @@ with tab_historial:
     df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
     if not df.empty:
-        # Selección de Artículo para Consolidar
         lista_articulos_pesados = df['articulo'].unique()
-        art_filtro = st.selectbox("Seleccione artículo para auditar:", lista_articulos_pesados)
+        art_filtro = st.selectbox("Seleccione artículo para auditar:", sorted(lista_articulos_pesados))
         
-        # Filtrar pesajes de ese artículo
         df_art = df[df['articulo'] == art_filtro]
         total_real = df_art['resultado_pue'].sum()
         
@@ -132,7 +135,6 @@ with tab_historial:
             with col_res3:
                 st.metric("DIFERENCIA", f"{diferencia:.2f}", delta=round(diferencia, 2), delta_color="inverse")
             
-            # Generar Mensaje WA
             detalles_wa = " + ".join(df_art['detalle_formula'].tolist())
             msg = (f"*AUDITORÍA CHAMPLITTE*\n"
                    f"*Art:* {art_filtro}\n"
@@ -143,6 +145,7 @@ with tab_historial:
             
             url_wa = f"https://wa.me/522283530069?text={urllib.parse.quote(msg)}"
             
+            # Botón pequeño, sin subrayado y sin cursiva (vía CSS arriba)
             st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">ENVIAR A WHATSAPP</a>', unsafe_allow_html=True)
 
         st.divider()
