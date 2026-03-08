@@ -96,7 +96,7 @@ with tab_calc:
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2, c3 = st.columns(3)
                 with c1: t_cont = st.checkbox("Contenedor (0.045)")
-                with c2: t_bis = st.checkbox("Bisagra (0.160)")
+                with c2: t_bis = st.checkbox("Bisagra (0.016)")
                 with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
             
             btn_save = st.form_submit_button("📥 GUARDAR EN BASE DE DATOS")
