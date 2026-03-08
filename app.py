@@ -158,7 +158,8 @@ with tab_historial:
             if stock_teorico is not None:
                 diferencia = total_real - stock_teorico
                 with c_res3:
-                    st.metric("DIFERENCIA", delta=round(diferencia, 2), delta_color="inverse"")
+                    st.metric("DIFERENCIA", f"delta=round(diferencia, 2), delta_color="inverse")
+
                 
                 # WhatsApp Report
                 desglose_txt = "\n".join([f"• {f} = {r:.2f}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
