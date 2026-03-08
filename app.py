@@ -158,7 +158,7 @@ with tab_historial:
             if stock_teorico is not None:
                 diferencia = total_real - stock_teorico
                 with c_res3:
-                    st.metric("DIFERENCIA", f"delta=round(diferencia, 2), delta_color="inverse")
+                st.metric("DIFERENCIA", delta=round(diferencia, 2), delta_color="inverse")
 
                 
                 # WhatsApp Report
