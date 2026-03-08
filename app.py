@@ -147,7 +147,7 @@ with tab_historial:
             
             c_res1, c_res2, c_res3 = st.columns(3)
             with c_res1:
-                st.metric("TOTAL CALCULADO", f"{total_real:.2f} uds")
+                st.metric("TOTAL CALCULADO", f"{total_real:.2f}")
             with c_res2:
                 stock_teorico = st.number_input("Valor en Sistema (Stock):", value=None, placeholder="Ingrese stock...")
             
