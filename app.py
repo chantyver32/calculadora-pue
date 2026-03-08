@@ -136,7 +136,7 @@ with tab_historial:
             df_art = df[df['articulo'] == art_filtro]
             total_real = df_art['resultado_pue'].sum()
             
-            st.subheader(f"Detalle de Operaciones: {art_filtro}")
+            st.subheader(f"{art_filtro}")
             
             # TABLA DETALLADA (Corregida para que no falten columnas)
             st.table(df_art[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
