@@ -8,49 +8,46 @@ import pytz
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
 
-# Estilos CSS para el botón de WhatsApp (Limpio, pequeño y profesional)
+# Estilos CSS Avanzados
 st.markdown("""
     <style>
+    /* Estilo General */
+    .main { background-color: #f5f7f9; }
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
+    
+    /* Botón de WhatsApp personalizado */
     .btn-wa {
         background-color: #25D366;
         color: white !important;
-        padding: 8px 16px;
+        padding: 10px 20px;
         text-align: center;
         text-decoration: none !important;
-        display: inline-block;
-        font-size: 13px;
+        display: block;
+        font-size: 14px;
         font-weight: bold;
-        font-style: normal !important;
-        border-radius: 5px;
-        transition: 0.3s;
+        border-radius: 8px;
+        margin: 10px 0;
         border: none;
-        margin-top: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    .btn-wa:hover {
-        background-color: #128C7E;
-        color: white !important;
-        text-decoration: none !important;
-    }
+    .btn-wa:hover { background-color: #128C7E; transform: translateY(-1px); }
+    
+    /* Tarjetas de métricas */
+    div[data-testid="stMetricValue"] { font-size: 28px; color: #1f77b4; }
     </style>
 """, unsafe_allow_html=True)
 
-# 2. BASE DE DATOS (v3 para asegurar que las columnas nuevas existan)
+# 2. BASE DE DATOS
 conn = sqlite3.connect("pue_champlitte_v3.db", check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-              fecha_hora TEXT, 
-              articulo TEXT, 
-              peso_bruto REAL, 
-              tara REAL, 
-              pue REAL, 
-              resultado_pue REAL, 
-              detalle_formula TEXT)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
+              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 conn.commit()
 
 # 3. DICCIONARIO DE PRODUCTOS
 productos = {
-    "": 0, "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
+    "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
     "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364, "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
     "CAJA TUTIS POR PZA A": 0.048, "CAPACILLO CHINO POR PZA B": 0.00104, "CAPACILLO ROJO #72 POR PZA A": 0.000436,
     "CONT BISAG P/5-6 TUTIS POR PZA A": 0.014, "CUCHARA MED DESCH POR PZA A": 0.00165,
@@ -71,47 +68,51 @@ productos = {
 }
 
 # 4. INTERFAZ
-tab_calc, tab_historial = st.tabs(["⚖️ Registro de Pesaje", "📂 Auditoría y Reportes"])
+tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada", "📋 Auditoría y Reportes"])
 
 # --- TAB 1: REGISTRO ---
 with tab_calc:
-    st.subheader("Registrar Pesaje Individual")
+    st.title("⚖️ Registro de Pesaje")
     
-    nuevo_art = st.checkbox("➕ Artículo NO listado (Asignar nombre y PUE manualmente)")
-    
-    with st.form(key="form_pesaje", clear_on_submit=True):
-        col_a, col_b = st.columns([2,1])
+    with st.container():
+        nuevo_art = st.toggle("Modo: Artículo NO listado", value=False)
         
-        if not nuevo_art:
-            with col_a: art_sel = st.selectbox("Artículo:", sorted(productos.keys()))
-            pue_base = productos.get(art_sel, 1.0)
-        else:
-            with col_a: art_sel = st.text_input("Nombre del nuevo artículo:", placeholder="Ej. BOLSA PERSONALIZADA")
-            pue_base = st.number_input("Asignar PUE:", value=1.000, format="%.4f")
+        with st.form(key="form_pesaje", clear_on_submit=True):
+            if not nuevo_art:
+                art_sel = st.selectbox("Seleccione Artículo:", sorted(productos.keys()), index=None, placeholder="Elija un producto...")
+                pue_base = productos.get(art_sel, 1.0)
+            else:
+                c_n1, c_n2 = st.columns([2,1])
+                with c_n1:
+                    art_sel = st.text_input("Nombre del Nuevo Artículo:", value=None, placeholder="Ej. CAJA PERSONALIZADA")
+                with c_n2:
+                    pue_base = st.number_input("Asignar PUE:", value=None, format="%.4f", placeholder="0.0000")
             
-        with col_b: peso_bruto = st.number_input("Peso Bruto (kg):", value=None, format="%.3f", placeholder="0.000")
-        
-        st.write("Taras:")
-        c1, c2, c3 = st.columns(3)
-        with c1: t_cont = st.checkbox("Contenedor (0.045)")
-        with c2: t_bis = st.checkbox("Bisagra (0.160)")
-        with c3: t_manual = st.number_input("Manual:", value=None, format="%.3f", placeholder="0.000")
-        
-        btn_save = st.form_submit_button("💾 GUARDAR PESAJE")
+            st.divider()
+            col_b1, col_b2 = st.columns([2,1])
+            with col_b1:
+                peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=None, format="%.3f", placeholder="0.000")
+            
+            with st.expander("🛠️ Configuración de Taras", expanded=True):
+                c1, c2, c3 = st.columns(3)
+                with c1: t_cont = st.checkbox("Contenedor (0.045)")
+                with c2: t_bis = st.checkbox("Bisagra (0.160)")
+                with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
+            
+            btn_save = st.form_submit_button("📥 GUARDAR EN BASE DE DATOS")
 
     if btn_save:
-        if art_sel and peso_bruto is not None:
+        if art_sel and peso_bruto is not None and (not nuevo_art or pue_base is not None):
             tm = t_manual if t_manual is not None else 0.0
             tara_total = (0.045 if t_cont else 0) + (0.16 if t_bis else 0) + tm
             peso_neto = peso_bruto - tara_total
             
-            # Lógica de cálculo
-            if "TINTA" in art_sel:
-                resultado = (peso_neto - 0.030) / pue_base
-                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T - 0.03Env) / {pue_base}"
-            else:
-                resultado = peso_neto / pue_base
-                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T) / {pue_base}"
+            # Cálculo de PUE
+            is_tinta = "TINTA" in str(art_sel).upper()
+            offset = 0.030 if is_tinta else 0.0
+            resultado = (peso_neto - offset) / pue_base
+            
+            formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_base}PUE"
             
             # Hora México
             zona_mexico = pytz.timezone('America/Mexico_City')
@@ -122,58 +123,63 @@ with tab_calc:
                          VALUES (?,?,?,?,?,?,?)""",
                       (fecha_mexico, art_sel, peso_bruto, tara_total, pue_base, resultado, formula))
             conn.commit()
-            st.success(f"Registrado: {resultado:.2f} de {art_sel}")
+            st.balloons()
+            st.success(f"✅ Registrado con éxito: {resultado:.2f} unidades.")
         else:
-            st.warning("⚠️ Faltan datos obligatorios.")
+            st.error("❌ Error: Todos los campos (incluyendo PUE si es nuevo) deben estar llenos.")
 
 # --- TAB 2: AUDITORÍA ---
 with tab_historial:
-    st.subheader("Auditoría Detallada de Operaciones")
+    st.title("📋 Consolidación de Auditoría")
     
     df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
     if not df.empty:
-        articulos_en_db = sorted(df['articulo'].unique())
-        art_filtro = st.selectbox("Seleccione artículo para consolidar reporte:", articulos_en_db)
+        art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", sorted(df['articulo'].unique()), index=None, placeholder="Seleccione para ver desglose...")
         
-        df_art = df[df['articulo'] == art_filtro]
-        total_real = df_art['resultado_pue'].sum()
-        
-        st.markdown(f"### Desglose de cálculos para: **{art_filtro}**")
-        
-        # TABLA CON TODOS LOS DETALLES MATEMÁTICOS
-        columnas_visibles = ['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']
-        st.table(df_art[columnas_visibles])
-        
-        col_res1, col_res2, col_res3 = st.columns(3)
-        with col_res1:
-            st.metric("SUMA TOTAL REAL", f"{total_real:.2f}")
-        with col_res2:
-            stock_teorico = st.number_input("Stock Teórico (Sistema):", value=None, placeholder="0.00")
-        
-        if stock_teorico is not None:
-            diferencia = total_real - stock_teorico
-            with col_res3:
-                st.metric("DIFERENCIA", f"{diferencia:.2f}", delta=round(diferencia, 2), delta_color="inverse")
+        if art_filtro:
+            df_art = df[df['articulo'] == art_filtro]
+            total_real = df_art['resultado_pue'].sum()
             
-            # Mensaje WA con desglose detallado
-            calculos_lista = "\n".join([f"- {f} = {r:.2f}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
-            msg = (f"*AUDITORÍA CHAMPLITTE*\n"
-                   f"*Art:* {art_filtro}\n"
-                   f"*Total Real:* {total_real:.2f}\n"
-                   f"*Stock:* {stock_teorico:.2f}\n"
-                   f"*Dif:* {diferencia:.2f}\n\n"
-                   f"*DESGLOSE:*\n{calculos_lista}")
+            st.subheader(f"Detalle Matemático: {art_filtro}")
+            # Tabla estilizada
+            st.table(df_art[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
+                'fecha_hora': 'Fecha/Hora', 'peso_bruto': 'P. Bruto', 'tara': 'Tara Total', 'pue': 'PUE Usado', 'detalle_formula': 'Operación', 'resultado_pue': 'Resultado'
+            }))
             
-            url_wa = f"https://wa.me/522283530069?text={urllib.parse.quote(msg)}"
-            st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">ENVIAR REPORTE DETALLADO WA</a>', unsafe_allow_html=True)
+            st.divider()
+            
+            c_res1, c_res2, c_res3 = st.columns(3)
+            with c_res1:
+                st.metric("TOTAL CALCULADO", f"{total_real:.2f} uds")
+            with c_res2:
+                stock_teorico = st.number_input("Valor en Sistema (Stock):", value=None, placeholder="Ingrese stock...")
+            
+            if stock_teorico is not None:
+                diferencia = total_real - stock_teorico
+                with c_res3:
+                    st.metric("DIFERENCIA (Diferencia)", f"{diferencia:.2f}", delta=round(diferencia, 2), delta_color="inverse")
+                
+                # WhatsApp Report
+                desglose_txt = "\n".join([f"• {f} = {r:.2f}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
+                msg = (f"*REPORTE DE AUDITORÍA PUE*\n"
+                       f"------------------------------\n"
+                       f"*Producto:* {art_filtro}\n"
+                       f"*Suma Real:* {total_real:.2f}\n"
+                       f"*Stock Sistema:* {stock_teorico:.2f}\n"
+                       f"*Diferencia:* {diferencia:.2f}\n"
+                       f"------------------------------\n"
+                       f"*OPERACIONES DETALLADAS:*\n{desglose_txt}")
+                
+                url_wa = f"https://wa.me/522283530069?text={urllib.parse.quote(msg)}"
+                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE COMPLETO A WHATSAPP</a>', unsafe_allow_html=True)
 
         st.divider()
-        if st.checkbox("Ver base de datos global"):
-            st.dataframe(df)
-            if st.button("🗑️ Limpiar toda la base de datos"):
+        with st.expander("🗑️ Administración de Base de Datos"):
+            st.dataframe(df, use_container_width=True)
+            if st.button("BORRAR TODOS LOS REGISTROS"):
                 c.execute("DELETE FROM pesajes_individuales")
                 conn.commit()
                 st.rerun()
     else:
-        st.info("No hay pesajes registrados aún.")
+        st.info("No hay datos registrados en la base de datos.")
