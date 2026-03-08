@@ -8,7 +8,7 @@ import pytz
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
 
-# Estilos CSS para el botón de WhatsApp (Limpio y profesional)
+# Estilos CSS para el botón de WhatsApp (Limpio, pequeño y profesional)
 st.markdown("""
     <style>
     .btn-wa {
@@ -34,12 +34,18 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. BASE DE DATOS
-conn = sqlite3.connect("pue_champlitte_v2.db", check_same_thread=False)
+# 2. BASE DE DATOS (v3 para asegurar que las columnas nuevas existan)
+conn = sqlite3.connect("pue_champlitte_v3.db", check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, articulo TEXT, 
-              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+              fecha_hora TEXT, 
+              articulo TEXT, 
+              peso_bruto REAL, 
+              tara REAL, 
+              pue REAL, 
+              resultado_pue REAL, 
+              detalle_formula TEXT)''')
 conn.commit()
 
 # 3. DICCIONARIO DE PRODUCTOS
@@ -71,7 +77,6 @@ tab_calc, tab_historial = st.tabs(["⚖️ Registro de Pesaje", "📂 Auditoría
 with tab_calc:
     st.subheader("Registrar Pesaje Individual")
     
-    # Opción Artículo Nuevo
     nuevo_art = st.checkbox("➕ Artículo NO listado (Asignar nombre y PUE manualmente)")
     
     with st.form(key="form_pesaje", clear_on_submit=True):
@@ -81,7 +86,7 @@ with tab_calc:
             with col_a: art_sel = st.selectbox("Artículo:", sorted(productos.keys()))
             pue_base = productos.get(art_sel, 1.0)
         else:
-            with col_a: art_sel = st.text_input("Nombre del nuevo artículo:", placeholder="Ej. CAJA NUEVA GDE")
+            with col_a: art_sel = st.text_input("Nombre del nuevo artículo:", placeholder="Ej. BOLSA PERSONALIZADA")
             pue_base = st.number_input("Asignar PUE:", value=1.000, format="%.4f")
             
         with col_b: peso_bruto = st.number_input("Peso Bruto (kg):", value=None, format="%.3f", placeholder="0.000")
@@ -100,21 +105,20 @@ with tab_calc:
             tara_total = (0.045 if t_cont else 0) + (0.16 if t_bis else 0) + tm
             peso_neto = peso_bruto - tara_total
             
-            # Cálculo
+            # Lógica de cálculo
             if "TINTA" in art_sel:
-                envase_offset = 0.030
-                resultado = (peso_neto - envase_offset) / pue_base
-                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T - 0.03Env) / {pue_base}PUE"
+                resultado = (peso_neto - 0.030) / pue_base
+                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T - 0.03Env) / {pue_base}"
             else:
                 resultado = peso_neto / pue_base
-                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T) / {pue_base}PUE"
+                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T) / {pue_base}"
             
             # Hora México
             zona_mexico = pytz.timezone('America/Mexico_City')
             fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
             
             c.execute("""INSERT INTO pesajes_individuales 
-                         (fecha, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                         (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
                          VALUES (?,?,?,?,?,?,?)""",
                       (fecha_mexico, art_sel, peso_bruto, tara_total, pue_base, resultado, formula))
             conn.commit()
@@ -137,8 +141,9 @@ with tab_historial:
         
         st.markdown(f"### Desglose de cálculos para: **{art_filtro}**")
         
-        # TABLA DETALLADA: Aquí verás PB, T, PUE y la Fórmula completa
-        st.table(df_art[['fecha', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']])
+        # TABLA CON TODOS LOS DETALLES MATEMÁTICOS
+        columnas_visibles = ['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']
+        st.table(df_art[columnas_visibles])
         
         col_res1, col_res2, col_res3 = st.columns(3)
         with col_res1:
@@ -151,14 +156,14 @@ with tab_historial:
             with col_res3:
                 st.metric("DIFERENCIA", f"{diferencia:.2f}", delta=round(diferencia, 2), delta_color="inverse")
             
-            # Generar Mensaje WA
+            # Mensaje WA con desglose detallado
             calculos_lista = "\n".join([f"- {f} = {r:.2f}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
             msg = (f"*AUDITORÍA CHAMPLITTE*\n"
                    f"*Art:* {art_filtro}\n"
                    f"*Total Real:* {total_real:.2f}\n"
                    f"*Stock:* {stock_teorico:.2f}\n"
                    f"*Dif:* {diferencia:.2f}\n\n"
-                   f"*OPERACIONES:*\n{calculos_lista}")
+                   f"*DESGLOSE:*\n{calculos_lista}")
             
             url_wa = f"https://wa.me/522283530069?text={urllib.parse.quote(msg)}"
             st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">ENVIAR REPORTE DETALLADO WA</a>', unsafe_allow_html=True)
@@ -166,9 +171,9 @@ with tab_historial:
         st.divider()
         if st.checkbox("Ver base de datos global"):
             st.dataframe(df)
-            if st.button("Limpiar toda la base de datos"):
+            if st.button("🗑️ Limpiar toda la base de datos"):
                 c.execute("DELETE FROM pesajes_individuales")
                 conn.commit()
                 st.rerun()
     else:
-        st.write("No hay pesajes registrados aún.")
+        st.info("No hay pesajes registrados aún.")
