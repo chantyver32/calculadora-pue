@@ -3,24 +3,24 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import urllib.parse
-import pytz # <--- MODIFICACIÓN 1: Importamos la librería de zonas horarias
+import pytz
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
 
-# Estilos CSS para el botón de WhatsApp
+# Estilos CSS para el botón de WhatsApp (Limpio y profesional)
 st.markdown("""
     <style>
     .btn-wa {
         background-color: #25D366;
         color: white !important;
-        padding: 6px 14px; /* <--- MODIFICACIÓN: Más pequeño */
+        padding: 8px 16px;
         text-align: center;
         text-decoration: none !important;
         display: inline-block;
-        font-size: 13px; /* <--- MODIFICACIÓN: Más pequeño */
+        font-size: 13px;
         font-weight: bold;
-        font-style: normal !important; /* <--- MODIFICACIÓN: Sin cursiva */
+        font-style: normal !important;
         border-radius: 5px;
         transition: 0.3s;
         border: none;
@@ -39,10 +39,10 @@ conn = sqlite3.connect("pue_champlitte_v2.db", check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, articulo TEXT, 
-              resultado_pue REAL, detalle_formula TEXT)''')
+              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 conn.commit()
 
-# 3. DICCIONARIO DE PRODUCTOS (Se mantiene igual)
+# 3. DICCIONARIO DE PRODUCTOS
 productos = {
     "": 0, "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
     "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364, "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
@@ -70,59 +70,75 @@ tab_calc, tab_historial = st.tabs(["⚖️ Registro de Pesaje", "📂 Auditoría
 # --- TAB 1: REGISTRO ---
 with tab_calc:
     st.subheader("Registrar Pesaje Individual")
+    
+    # Opción Artículo Nuevo
+    nuevo_art = st.checkbox("➕ Artículo NO listado (Asignar nombre y PUE manualmente)")
+    
     with st.form(key="form_pesaje", clear_on_submit=True):
         col_a, col_b = st.columns([2,1])
-        with col_a: art_sel = st.selectbox("Artículo:", sorted(productos.keys()))
+        
+        if not nuevo_art:
+            with col_a: art_sel = st.selectbox("Artículo:", sorted(productos.keys()))
+            pue_base = productos.get(art_sel, 1.0)
+        else:
+            with col_a: art_sel = st.text_input("Nombre del nuevo artículo:", placeholder="Ej. CAJA NUEVA GDE")
+            pue_base = st.number_input("Asignar PUE:", value=1.000, format="%.4f")
+            
         with col_b: peso_bruto = st.number_input("Peso Bruto (kg):", value=None, format="%.3f", placeholder="0.000")
         
         st.write("Taras:")
         c1, c2, c3 = st.columns(3)
         with c1: t_cont = st.checkbox("Contenedor (0.045)")
-        with c2: t_bis = st.checkbox("Bisagra (0.016)")
+        with c2: t_bis = st.checkbox("Bisagra (0.160)")
         with c3: t_manual = st.number_input("Manual:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("💾 GUARDAR PESAJE")
 
     if btn_save:
         if art_sel and peso_bruto is not None:
-            pue = productos.get(art_sel, 1.0)
             tm = t_manual if t_manual is not None else 0.0
-            tara = (0.045 if t_cont else 0) + (0.16 if t_bis else 0) + tm
-            pn = peso_bruto - tara
+            tara_total = (0.045 if t_cont else 0) + (0.16 if t_bis else 0) + tm
+            peso_neto = peso_bruto - tara_total
             
+            # Cálculo
             if "TINTA" in art_sel:
-                res = (pn - 0.030) / pue
-                formula = f"({pn:.3f}-0.03)/{pue}"
+                envase_offset = 0.030
+                resultado = (peso_neto - envase_offset) / pue_base
+                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T - 0.03Env) / {pue_base}PUE"
             else:
-                res = pn / pue
-                formula = f"{pn:.3f}/{pue}"
+                resultado = peso_neto / pue_base
+                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T) / {pue_base}PUE"
             
-            # --- MODIFICACIÓN 2: LÓGICA DE HORA MÉXICO ---
+            # Hora México
             zona_mexico = pytz.timezone('America/Mexico_City')
             fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
             
-            c.execute("INSERT INTO pesajes_individuales (fecha, articulo, resultado_pue, detalle_formula) VALUES (?,?,?,?)",
-                      (fecha_mexico, art_sel, res, formula))
+            c.execute("""INSERT INTO pesajes_individuales 
+                         (fecha, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                         VALUES (?,?,?,?,?,?,?)""",
+                      (fecha_mexico, art_sel, peso_bruto, tara_total, pue_base, resultado, formula))
             conn.commit()
-            st.success(f"REGISTRADO {res:.2f} de {art_sel}")
+            st.success(f"Registrado: {resultado:.2f} de {art_sel}")
         else:
-            st.warning("Faltan datos.")
+            st.warning("⚠️ Faltan datos obligatorios.")
 
 # --- TAB 2: AUDITORÍA ---
 with tab_historial:
-    st.subheader("Resumen y Comparación contra Stock")
+    st.subheader("Auditoría Detallada de Operaciones")
     
     df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
     if not df.empty:
-        lista_articulos_pesados = df['articulo'].unique()
-        art_filtro = st.selectbox("Seleccione artículo para auditar:", sorted(lista_articulos_pesados))
+        articulos_en_db = sorted(df['articulo'].unique())
+        art_filtro = st.selectbox("Seleccione artículo para consolidar reporte:", articulos_en_db)
         
         df_art = df[df['articulo'] == art_filtro]
         total_real = df_art['resultado_pue'].sum()
         
-        st.info(f"Se encontraron **{len(df_art)}** pesajes para este artículo.")
-        st.dataframe(df_art[['fecha', 'resultado_pue', 'detalle_formula']], use_container_width=True)
+        st.markdown(f"### Desglose de cálculos para: **{art_filtro}**")
+        
+        # TABLA DETALLADA: Aquí verás PB, T, PUE y la Fórmula completa
+        st.table(df_art[['fecha', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']])
         
         col_res1, col_res2, col_res3 = st.columns(3)
         with col_res1:
@@ -135,21 +151,20 @@ with tab_historial:
             with col_res3:
                 st.metric("DIFERENCIA", f"{diferencia:.2f}", delta=round(diferencia, 2), delta_color="inverse")
             
-            detalles_wa = " + ".join(df_art['detalle_formula'].tolist())
+            # Generar Mensaje WA
+            calculos_lista = "\n".join([f"- {f} = {r:.2f}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
             msg = (f"*AUDITORÍA CHAMPLITTE*\n"
                    f"*Art:* {art_filtro}\n"
                    f"*Total Real:* {total_real:.2f}\n"
                    f"*Stock:* {stock_teorico:.2f}\n"
-                   f"*Dif:* {diferencia:.2f}\n"
-                   f"*Cálculos:* {detalles_wa}")
+                   f"*Dif:* {diferencia:.2f}\n\n"
+                   f"*OPERACIONES:*\n{calculos_lista}")
             
             url_wa = f"https://wa.me/522283530069?text={urllib.parse.quote(msg)}"
-            
-            # Botón pequeño, sin subrayado y sin cursiva (vía CSS arriba)
-            st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">ENVIAR A WHATSAPP</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">ENVIAR REPORTE DETALLADO WA</a>', unsafe_allow_html=True)
 
         st.divider()
-        if st.checkbox("Ver historial completo de todos los pesajes"):
+        if st.checkbox("Ver base de datos global"):
             st.dataframe(df)
             if st.button("Limpiar toda la base de datos"):
                 c.execute("DELETE FROM pesajes_individuales")
