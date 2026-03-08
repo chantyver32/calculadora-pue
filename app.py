@@ -104,7 +104,7 @@ with tab_calc:
             c.execute("INSERT INTO pesajes_individuales (fecha, articulo, resultado_pue, detalle_formula) VALUES (?,?,?,?)",
                       (fecha_mexico, art_sel, res, formula))
             conn.commit()
-            st.success(f"Registrado ({res:.2f} de {art_sel}")
+            st.success(f"REGISTRADO {res:.2f} de {art_sel}")
         else:
             st.warning("Faltan datos.")
 
