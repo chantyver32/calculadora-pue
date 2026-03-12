@@ -11,7 +11,7 @@ from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
 import re  
-import streamlit.components.v1 as components  # <-- NUEVO: Importación para el parche del teclado
+import streamlit.components.v1 as components
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
@@ -122,6 +122,10 @@ productos = {
     "ESCURRIDOR POR PZA M": 1.0, "RECOGEDOR POR PZA M": 1.0, "MECHUDO POR PZA A": 1.0,
 }
 
+# VARIABLES FIJAS
+sucursal_in = "COSTA VERDE"
+elabora_in = "PEDRO GARCÍA"
+
 # 4. INTERFAZ
 tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada", "📋 Auditoría y Reportes"])
 
@@ -158,16 +162,13 @@ with tab_calc:
     opciones = sorted(productos.keys())
     
     if texto_filtro:
-        # 1. Buscar Taras
         if "CONTENEDOR" in texto_filtro: t_cont_sugerido = True
         if "BISAGRA" in texto_filtro: t_bis_sugerido = True
         
-        # 2. Extraer el Peso Unitario
         match_pue = re.search(r'(?:PESO UNITARIO|UNITARIO|PUE|ESTÁNDAR|ESTANDAR)[^\d]*(\d+(?:[.,]\d+)?)', texto_filtro)
         if match_pue:
             pue_sugerido = float(match_pue.group(1).replace(',', '.'))
             
-        # 3. Extraer el Peso Bruto
         numeros_str = re.findall(r'\d+(?:[.,]\d+)?', texto_filtro)
         numeros_floats = [float(n.replace(',', '.')) for n in numeros_str]
         
@@ -177,14 +178,12 @@ with tab_calc:
             if numeros_floats:
                 peso_sugerido = numeros_floats[0] 
                 
-        # 4. Limpiar el texto para el nombre
         palabras_basura = [r'\d+(?:[.,]\d+)?', 'PESO UNITARIO', 'PUE', 'PESO', 'UNITARIO', 'ESTÁNDAR', 'ESTANDAR', 'KILOS', 'KG', 'GRAMOS', 'CON', 'SIN', 'Y', 'DE', 'EL', 'LA', 'CONTENEDOR', 'BISAGRA', 'LLEVA', 'ASIGNAR']
         texto_limpio = texto_filtro
         for p in palabras_basura:
             texto_limpio = re.sub(r'\b' + p + r'\b', '', texto_limpio)
         nombre_limpio_sugerido = ' '.join(texto_limpio.split()) 
         
-        # 5. Intentar buscar en artículos existentes
         palabras_clave = nombre_limpio_sugerido.split()
         if palabras_clave:
             max_coincidencias = 0
@@ -269,7 +268,6 @@ with tab_historial:
     df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
     if not df.empty:
-        # --- FILTRO POR VOZ EN TAB 2 ---
         st.info("🎤 **Buscar Artículo por Voz:** Dicta el nombre del producto que quieres auditar.")
         audio_filtro_bytes = st.audio_input("Grabar voz para buscar", key="audio_filtro")
         texto_busqueda = ""
@@ -297,7 +295,6 @@ with tab_historial:
                     max_coincidencias_busqueda = coincidencias
                     idx_filtro_sugerido = i
 
-        # Selectbox que usa el índice sugerido por voz
         art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", opciones_filtro, index=idx_filtro_sugerido, placeholder="Seleccione para ver desglose...")
         
         msg_reporte = "" 
@@ -335,13 +332,6 @@ with tab_historial:
                                f"*OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
 
         st.divider()
-        
-        # Inputs de información global (Movidos aquí para que apliquen a Word, Excel y WhatsApp)
-        col_info1, col_info2 = st.columns(2)
-        with col_info1:
-            sucursal_in = st.text_input("Sucursal:", value="COSTA VERDE")
-        with col_info2:
-            elabora_in = st.text_input("Elabora / Vendedor:", value="PEDRO GARCÍA")
 
         st.subheader("🖨️ Exportación de Archivos")
         col_export1, col_export2, col_export3 = st.columns(3)
@@ -398,7 +388,7 @@ with tab_historial:
                     worksheet.write(row, 0, row_data['articulo'], format_data)
                     worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
                     worksheet.write(row, 2, row_data['detalle_formula'], format_center) 
-                    worksheet.write(row, 3, elabora_in, format_center) # ¡Centrado!
+                    worksheet.write(row, 3, elabora_in, format_center) 
                     row += 1
                     
                 worksheet.set_column('A:A', 35)
@@ -419,7 +409,6 @@ with tab_historial:
         with col_export3:
             st.markdown("**3. Generar Reporte**")
             
-            # Texto ordenado para WhatsApp sin CSV y sin vendedor en cada fila
             reporte_wa_texto = f"📊 *REPORTE WHATSAPP - BAJA DE INSUMOS*\n"
             reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
             reporte_wa_texto += f"👤 *Elabora:* {elabora_in}\n"
@@ -453,35 +442,33 @@ with tab_historial:
         st.divider()
         
         with st.expander("🗑️ Administración de Base de Datos - Eliminar Registros", expanded=True):
-            st.markdown("#### Selecciona el renglón que deseas eliminar")
+            st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar.")
             
-            c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns([0.5, 3, 1, 2, 1])
-            c_h1.write("**ID**")
-            c_h2.write("**Artículo**")
-            c_h3.write("**Cantidad**")
-            c_h4.write("**Fecha**")
-            c_h5.write("**Acción**")
+            # --- NUEVA TABLA INTERACTIVA TIPO CSV ---
+            columnas_bloqueadas = df.columns.tolist() # Evita que editen los datos, solo permite borrar
+            edited_df = st.data_editor(
+                df,
+                use_container_width=True,
+                num_rows="dynamic",
+                hide_index=True,
+                disabled=columnas_bloqueadas, 
+                key="editor_db"
+            )
             
-            st.divider()
-            
-            for _, row_del in df.iterrows():
-                c_r1, c_r2, c_r3, c_r4, c_r5 = st.columns([0.5, 3, 1, 2, 1], vertical_alignment="center")
+            # Botón estilo imagen para guardar los cambios
+            if st.button("💾 Guardar Cambios en Tabla", use_container_width=True):
+                original_ids = set(df['id'])
+                current_ids = set(edited_df['id'])
+                ids_to_delete = original_ids - current_ids
                 
-                c_r1.write(str(row_del['id']))
-                c_r2.write(row_del['articulo'])
-                c_r3.write(formato_estricto(row_del['resultado_pue']))
-                
-                try:
-                    dt_obj = datetime.strptime(row_del['fecha_hora'], "%Y-%m-%d %H:%M:%S")
-                    c_r4.write(dt_obj.strftime("%d/%m %H:%M"))
-                except:
-                    c_r4.write(row_del['fecha_hora'])
-                
-                if c_r5.button("🗑️ Eliminar", key=f"del_{row_del['id']}", use_container_width=True):
-                    c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (row_del['id'],))
+                if ids_to_delete:
+                    for del_id in ids_to_delete:
+                        c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (del_id,))
                     conn.commit()
-                    st.success(f"Registro eliminado correctamente.")
+                    st.success(f"Se eliminaron {len(ids_to_delete)} registros correctamente.")
                     st.rerun()
+                else:
+                    st.info("No detecté ninguna fila eliminada para guardar.")
             
             st.divider()
             
@@ -492,8 +479,7 @@ with tab_historial:
     else:
         st.info("No hay pesajes registrados aún.")
 
-# --- NUEVO: AJUSTE DE TECLADO MÓVIL ---
-# Esto inyecta un pequeño script que cambia el teclado de los campos numéricos de "Siguiente" a "Listo/Ok"
+# --- AJUSTE DE TECLADO MÓVIL ---
 components.html(
     """
     <script>
