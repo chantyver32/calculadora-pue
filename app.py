@@ -5,6 +5,11 @@ from datetime import datetime
 import urllib.parse
 import pytz
 import io
+import speech_recognition as sr
+from docx import Document
+from docx.shared import Cm, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_ROW_HEIGHT_RULE
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
@@ -40,17 +45,64 @@ c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 conn.commit()
 
-# --- FUNCIONES DE FORMATEO ESTRICTO ---
+# --- FUNCIONES ---
 def truncar_dos_decimales(valor):
     if valor is None: return 0.0
     return int(valor * 100) / 100.0
 
 def formato_estricto(valor):
-    """Convierte a texto y corta en 2 decimales SIN redondear absolutamente nada."""
     if pd.isna(valor) or valor is None: return "0.00"
     s = f"{float(valor):.10f}" 
     entero, decimal = s.split('.')
     return f"{entero}.{decimal[:2]}"
+
+def generar_word_tarjetas(df):
+    """Genera un docx con una tabla de celdas de 5x5 cm para recortar"""
+    doc = Document()
+    
+    # Reducir márgenes para aprovechar la hoja
+    for section in doc.sections:
+        section.top_margin = Cm(1)
+        section.bottom_margin = Cm(1)
+        section.left_margin = Cm(1)
+        section.right_margin = Cm(1)
+        
+    # Calcular filas y columnas (A4 caben aprox 4 columnas de 5cm)
+    cols = 4
+    rows = (len(df) + cols - 1) // cols
+    if rows == 0: rows = 1
+    
+    table = doc.add_table(rows=rows, cols=cols)
+    table.style = 'Table Grid'
+    
+    for idx, row_data in df.iterrows():
+        r = idx // cols
+        c = idx % cols
+        cell = table.cell(r, c)
+        
+        # Forzar tamaño de celda a 5x5 cm
+        cell.width = Cm(5)
+        table.rows[r].height = Cm(5)
+        table.rows[r].height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
+        
+        articulo = str(row_data['articulo'])
+        resultado = formato_estricto(row_data['resultado_pue'])
+        
+        # Formato del texto interno
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run1 = p.add_run(f"\n{articulo}\n")
+        run1.font.size = Pt(8)
+        run1.bold = True
+        
+        run2 = p.add_run(f"\nTotal: {resultado}")
+        run2.font.size = Pt(12)
+        run2.bold = True
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 # 3. DICCIONARIO DE PRODUCTOS
 productos = {
@@ -81,6 +133,26 @@ tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada", "📋 Auditoría y Repo
 with tab_calc:
     st.title("⚖️ Registro de Pesaje")
     
+    # ---- INGRESO POR VOZ ----
+    st.info("🎤 **Ingreso por Voz:** Dicta el nombre del artículo o los kilos para filtrarlos rápidamente.")
+    audio_bytes = st.audio_input("Grabar voz")
+    texto_reconocido = ""
+    
+    if audio_bytes:
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(audio_bytes) as source:
+            audio_data = recognizer.record(source)
+            try:
+                texto_reconocido = recognizer.recognize_google(audio_data, language="es-MX")
+                st.success(f"**Escuchado:** {texto_reconocido}")
+            except sr.UnknownValueError:
+                st.error("No se pudo entender el audio.")
+            except sr.RequestError:
+                st.error("Error en el servicio de reconocimiento de voz.")
+
+    # Convertir el texto a mayúsculas para intentar autocompletar
+    texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
+    
     col_mode1, col_mode2 = st.columns(2)
     with col_mode1:
         nuevo_art = st.toggle("Modo: Artículo NO listado", value=False)
@@ -89,23 +161,43 @@ with tab_calc:
     
     with st.form(key="form_pesaje", clear_on_submit=True):
         if not nuevo_art:
-            art_sel = st.selectbox("Seleccione Artículo:", sorted(productos.keys()), index=None, placeholder="Elija un producto...")
-            pue_final = productos.get(art_sel, 1.0)
+            # Si se dictó algo por voz, buscamos coincidencias para pre-seleccionar
+            opciones = sorted(productos.keys())
+            idx_sugerido = None
+            for i, prod in enumerate(opciones):
+                if texto_filtro and texto_filtro in prod:
+                    idx_sugerido = i
+                    break
+                    
+            art_sel = st.selectbox("Seleccione Artículo:", opciones, index=idx_sugerido, placeholder="Elija un producto...")
+            pue_final = productos.get(art_sel, 1.0) if art_sel else 1.0
         else:
             c_n1, c_n2 = st.columns([2,1])
             with c_n1:
-                art_sel = st.text_input("Nombre del Nuevo Artículo:", value=None, placeholder="Ej. CAJA PERSONALIZADA")
+                art_sel = st.text_input("Nombre del Nuevo Artículo:", value=texto_filtro if texto_filtro else None, placeholder="Ej. CAJA PERSONALIZADA")
             with c_n2:
                 pue_final = st.number_input("Asignar PUE:", value=None, format="%.4f", placeholder="0.0000")
 
         st.divider()
 
         if modo_preconteo:
+            # Intenta extraer un número del texto de voz si hay uno
+            num_sugerido = None
+            if texto_filtro and any(char.isdigit() for char in texto_filtro):
+                numeros = [int(s) for s in texto_filtro.split() if s.isdigit()]
+                if numeros: num_sugerido = float(numeros[0])
+                
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
-            cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=None, step=1.0, placeholder="Ej. 50")
+            cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=num_sugerido, step=1.0, placeholder="Ej. 50")
             peso_bruto, tara_total, formula = 0.0, 0.0, "CONTEO MANUAL DIRECTO"
         else:
-            peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=None, format="%.3f", placeholder="0.000")
+            # Similar intento de extraer el peso dictado
+            peso_sugerido = None
+            if texto_filtro and any(char.isdigit() for char in texto_filtro):
+                numeros = [float(s) for s in texto_filtro.replace(',', '.').split() if s.replace('.','',1).isdigit()]
+                if numeros: peso_sugerido = numeros[0]
+
+            peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2, c3 = st.columns(3)
                 with c1: t_cont = st.checkbox("Contenedor (0.016)")
@@ -194,30 +286,28 @@ with tab_historial:
 
         st.divider()
         
-        # 2. SECCIÓN DE CSV FÍSICO Y EXCEL ESTRUCTURADO (EN MEDIO)
-        col_export1, col_export2 = st.columns(2)
+        # 2. SECCIÓN DE EXPORTACIÓN Y TARJETAS RECORTABLES
+        st.subheader("🖨️ Exportación de Archivos")
+        col_export1, col_export2, col_export3 = st.columns(3)
         
         with col_export1:
-            st.subheader("🖨️ Archivo CSV (Solo para Tarjetas)")
+            st.markdown("**1. Tarjetas para Recorte**")
             df_impresion = df[['articulo', 'resultado_pue']].copy()
-            df_impresion['resultado_pue'] = df_impresion['resultado_pue'].apply(formato_estricto)
-            csv_data = df_impresion.to_csv(index=False)
-            mensaje_csv = "📊 *CSV Generado para Impresión*\n\n" + csv_data
+            word_file = generar_word_tarjetas(df_impresion)
             
             st.download_button(
-                label="⬇️ Descargar CSV para Tarjetas",
-                data=csv_data,
-                file_name="tarjetas_impresion_pue.csv",
-                mime="text/csv",
+                label="📄 Descargar Tarjetas en Word (5x5 cm)",
+                data=word_file,
+                file_name="Tarjetas_Recortables.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True
             )
             
         with col_export2:
-            st.subheader("📊 Reporte Excel Oficial")
+            st.markdown("**2. Reporte Excel Oficial**")
             sucursal_in = st.text_input("Sucursal:", value="COSTA VERDE")
             elabora_in = st.text_input("Elabora / Vendedor:", value="PEDRO GARCÍA")
             
-            # Preparar Excel en memoria
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 df_empty = pd.DataFrame()
@@ -225,7 +315,6 @@ with tab_historial:
                 workbook = writer.book
                 worksheet = writer.sheets['Baja de insumos']
                 
-                # Formatos de celdas
                 format_title = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#8B0000', 'font_color': 'white', 'font_size': 12, 'border': 1})
                 format_subtitle = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_size': 11, 'border': 1})
                 format_label = workbook.add_format({'bold': True, 'border': 1})
@@ -233,7 +322,6 @@ with tab_historial:
                 format_header = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#f2f2f2'})
                 format_center = workbook.add_format({'align': 'center', 'border': 1})
                 
-                # Encabezados
                 worksheet.merge_range('A1:D1', 'PASTELERÍA CHAMPLITTE, S.A. DE C.V.', format_title)
                 worksheet.merge_range('A2:D2', 'BAJA DE INSUMOS', format_subtitle)
                 
@@ -247,12 +335,10 @@ with tab_historial:
                 worksheet.write('A5', 'ELABORA', format_label)
                 worksheet.merge_range('B5:D5', elabora_in, format_data)
                 
-                # Cambio en el nombre de la columna
                 headers_excel = ['DESCRIPCIÓN', 'CANTIDAD', 'CÁLCULOS REALIZADOS', 'VENDEDOR']
                 for col_num, data in enumerate(headers_excel):
                     worksheet.write(5, col_num, data, format_header)
                     
-                # Llenar datos desglosados (ahora integrando detalle_formula)
                 row = 6
                 for index, row_data in df.iterrows():
                     worksheet.write(row, 0, row_data['articulo'], format_data)
@@ -261,10 +347,9 @@ with tab_historial:
                     worksheet.write(row, 3, elabora_in, format_data)
                     row += 1
                     
-                # Ajustar columnas
                 worksheet.set_column('A:A', 35)
                 worksheet.set_column('B:B', 15)
-                worksheet.set_column('C:C', 45) # Se hizo más ancha para que quepa bien la fórmula
+                worksheet.set_column('C:C', 45)
                 worksheet.set_column('D:D', 20)
 
             output.seek(0)
@@ -277,9 +362,23 @@ with tab_historial:
                 use_container_width=True
             )
 
+        with col_export3:
+            st.markdown("**3. CSV Plano**")
+            df_impresion['resultado_pue'] = df_impresion['resultado_pue'].apply(formato_estricto)
+            csv_data = df_impresion.to_csv(index=False)
+            mensaje_csv = "📊 *CSV Generado para Impresión*\n\n" + csv_data
+            
+            st.download_button(
+                label="⬇️ Descargar CSV",
+                data=csv_data,
+                file_name="tarjetas_impresion_pue.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
         st.divider()
         
-        # 3. SECCIÓN DE WHATSAPP (HASTA ABAJO)
+        # 3. SECCIÓN DE WHATSAPP
         st.subheader("📞 Configuración y Envíos a WhatsApp")
         numero_wa = st.text_input("Número destino (Incluir código de país, ej. 52 para México):", value="522283530069")
         
