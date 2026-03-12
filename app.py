@@ -39,6 +39,11 @@ c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 conn.commit()
 
+# Función auxiliar para truncar a 2 decimales sin redondear
+def truncar_dos_decimales(valor):
+    if valor is None: return 0.0
+    return int(valor * 100) / 100.0
+
 # 3. DICCIONARIO DE PRODUCTOS
 productos = {
     "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
@@ -109,7 +114,7 @@ with tab_calc:
         
         if modo_preconteo:
             datos_listos = articulo_valido and cantidad_directa is not None
-            resultado = cantidad_directa if datos_listos else 0
+            resultado = truncar_dos_decimales(cantidad_directa) if datos_listos else 0
         else:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
@@ -118,7 +123,8 @@ with tab_calc:
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
-                resultado = (peso_neto - offset) / pue_final
+                resultado_calc = (peso_neto - offset) / pue_final
+                resultado = truncar_dos_decimales(resultado_calc) # Truncar a 2 decimales sin redondear hacia arriba
                 formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
 
         if datos_listos:
@@ -145,9 +151,13 @@ with tab_historial:
     if not df.empty:
         art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", sorted(df['articulo'].unique()), index=None, placeholder="Seleccione para ver desglose...")
         
+        # --- NUEVA SECCIÓN: ELEGIR NÚMERO DE WHATSAPP ---
+        st.write("📞 Configuración de Envío WhatsApp")
+        numero_wa = st.text_input("Número destino (Incluir código de país, ej. 52 para México):", value="522283530069")
+        
         if art_filtro:
             df_art = df[df['articulo'] == art_filtro]
-            total_real = df_art['resultado_pue'].sum()
+            total_real = truncar_dos_decimales(df_art['resultado_pue'].sum())
             
             st.subheader(f"{art_filtro}")
             st.table(df_art[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
@@ -162,7 +172,7 @@ with tab_historial:
                 stock_teorico = st.number_input("Valor en Sistema (Stock):", value=None, placeholder="Ingrese stock...")
             
             if stock_teorico is not None:
-                diferencia = total_real - stock_teorico
+                diferencia = truncar_dos_decimales(total_real - stock_teorico)
                 with c_res3:
                     st.metric("DIFERENCIA", f"{diferencia:.2f}", delta=round(diferencia, 2), delta_color="inverse")
                 
@@ -176,12 +186,54 @@ with tab_historial:
                        f"------------------------------\n"
                        f"*OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
                 
-                url_wa = f"https://wa.me/522283530069?text={urllib.parse.quote(msg)}"
-                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE COMPLETO A WHATSAPP</a>', unsafe_allow_html=True)
+                url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg)}"
+                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE A WHATSAPP</a>', unsafe_allow_html=True)
 
         st.divider()
+        
+        # --- NUEVA SECCIÓN: DESCARGAR / ENVIAR CSV COMPLETO PARA TARJETAS ---
+        st.subheader("🖨️ Archivo CSV para Tarjetas (Truncado a 2 decimales)")
+        # Crear un df especifico para impresion con el formato deseado
+        df_impresion = df[['articulo', 'resultado_pue']].copy()
+        # Forzar el formato a texto con exactamente dos decimales (ya truncados de origen)
+        df_impresion['resultado_pue'] = df_impresion['resultado_pue'].apply(lambda x: f"{x:.2f}")
+        
+        csv_data = df_impresion.to_csv(index=False)
+        
+        col_csv1, col_csv2 = st.columns(2)
+        with col_csv1:
+            st.download_button(
+                label="⬇️ Descargar CSV",
+                data=csv_data,
+                file_name="tarjetas_impresion_pue.csv",
+                mime="text/csv"
+            )
+        with col_csv2:
+            mensaje_csv = "📊 *CSV Generado para Impresión*\n\n" + csv_data
+            url_wa_csv = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(mensaje_csv)}"
+            st.markdown(f'<a href="{url_wa_csv}" target="_blank" class="btn-wa" style="margin: 0px;">📲 ENVIAR CSV A WHATSAPP</a>', unsafe_allow_html=True)
+            
+        st.divider()
+        
         with st.expander("🗑️ Administración de Base de Datos"):
             st.dataframe(df, use_container_width=True)
+            
+            # --- NUEVA SECCIÓN: ELIMINAR INDIVIDUAL ---
+            st.markdown("#### Eliminar Registro Individual")
+            c_del1, c_del2 = st.columns([1, 2])
+            with c_del1:
+                id_a_eliminar = st.number_input("Ingresa el ID a eliminar:", min_value=1, step=1)
+            with c_del2:
+                st.write("") # Espaciado para alinear
+                st.write("")
+                if st.button("ELIMINAR ESTE ID"):
+                    c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (id_a_eliminar,))
+                    conn.commit()
+                    st.success(f"ID {id_a_eliminar} eliminado.")
+                    st.rerun()
+            
+            st.divider()
+            
             if st.button("LIMPIAR TODA LA BASE DE DATOS"):
                 c.execute("DELETE FROM pesajes_individuales")
                 conn.commit()
