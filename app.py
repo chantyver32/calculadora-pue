@@ -10,6 +10,7 @@ from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
+import re  # <--- NUEVA IMPORTACIÓN PARA EXTRAER NÚMEROS Y TEXTO INTELIGENTEMENTE
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
@@ -57,17 +58,13 @@ def formato_estricto(valor):
     return f"{entero}.{decimal[:2]}"
 
 def generar_word_tarjetas(df):
-    """Genera un docx con una tabla de celdas de 5x5 cm para recortar"""
     doc = Document()
-    
-    # Reducir márgenes para aprovechar la hoja
     for section in doc.sections:
         section.top_margin = Cm(1)
         section.bottom_margin = Cm(1)
         section.left_margin = Cm(1)
         section.right_margin = Cm(1)
         
-    # Calcular filas y columnas (A4 caben aprox 4 columnas de 5cm)
     cols = 4
     rows = (len(df) + cols - 1) // cols
     if rows == 0: rows = 1
@@ -80,7 +77,6 @@ def generar_word_tarjetas(df):
         c = idx % cols
         cell = table.cell(r, c)
         
-        # Forzar tamaño de celda a 5x5 cm
         cell.width = Cm(5)
         table.rows[r].height = Cm(5)
         table.rows[r].height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
@@ -88,7 +84,6 @@ def generar_word_tarjetas(df):
         articulo = str(row_data['articulo'])
         resultado = formato_estricto(row_data['resultado_pue'])
         
-        # Formato del texto interno
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run1 = p.add_run(f"\n{articulo}\n")
@@ -133,8 +128,7 @@ tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada", "📋 Auditoría y Repo
 with tab_calc:
     st.title("⚖️ Registro de Pesaje")
     
-    # ---- INGRESO POR VOZ ----
-    st.info("🎤 **Ingreso por Voz:** Dicta el nombre del artículo o los kilos para filtrarlos rápidamente.")
+    st.info("🎤 **Ingreso por Voz:** Dicta el nombre, el peso y si lleva contenedor o bisagra. Revisa y edita antes de guardar.")
     audio_bytes = st.audio_input("Grabar voz")
     texto_reconocido = ""
     
@@ -150,9 +144,41 @@ with tab_calc:
             except sr.RequestError:
                 st.error("Error en el servicio de reconocimiento de voz.")
 
-    # Convertir el texto a mayúsculas para intentar autocompletar
+    # --- LÓGICA INTELIGENTE DE INTERPRETACIÓN DE VOZ ---
     texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
     
+    idx_sugerido = None
+    peso_sugerido = None
+    t_cont_sugerido = False
+    t_bis_sugerido = False
+    
+    opciones = sorted(productos.keys())
+    
+    if texto_filtro:
+        # 1. Buscar Taras
+        if "CONTENEDOR" in texto_filtro: t_cont_sugerido = True
+        if "BISAGRA" in texto_filtro: t_bis_sugerido = True
+        
+        # 2. Buscar Números (acepta decimales como 2.5 o 2,5)
+        numeros = re.findall(r'\d+(?:[.,]\d+)?', texto_filtro)
+        if numeros:
+            peso_sugerido = float(numeros[0].replace(',', '.'))
+            
+        # 3. Buscar el Artículo (Ignoramos palabras comunes y números para enfocarnos en el producto)
+        palabras_ignoradas = ['KG', 'KILOS', 'KILO', 'GRAMOS', 'GR', 'PIEZAS', 'PIEZA', 'PZAS', 'CON', 'SIN', 'Y', 'DE', 'EL', 'LA', 'CONTENEDOR', 'BISAGRA', 'LLEVA']
+        # Nos quedamos solo con palabras clave (ej. "AGUA", "CIEL")
+        palabras_clave = [p for p in texto_filtro.split() if p not in palabras_ignoradas and not re.match(r'\d', p)]
+        
+        if palabras_clave:
+            max_coincidencias = 0
+            for i, prod in enumerate(opciones):
+                # Contamos cuántas de las palabras clave dictadas están en el nombre del producto
+                coincidencias = sum(1 for palabra in palabras_clave if palabra in prod.upper())
+                if coincidencias > max_coincidencias:
+                    max_coincidencias = coincidencias
+                    idx_sugerido = i
+
+    # --- RENDERIZADO DEL FORMULARIO ---
     col_mode1, col_mode2 = st.columns(2)
     with col_mode1:
         nuevo_art = st.toggle("Modo: Artículo NO listado", value=False)
@@ -161,14 +187,6 @@ with tab_calc:
     
     with st.form(key="form_pesaje", clear_on_submit=True):
         if not nuevo_art:
-            # Si se dictó algo por voz, buscamos coincidencias para pre-seleccionar
-            opciones = sorted(productos.keys())
-            idx_sugerido = None
-            for i, prod in enumerate(opciones):
-                if texto_filtro and texto_filtro in prod:
-                    idx_sugerido = i
-                    break
-                    
             art_sel = st.selectbox("Seleccione Artículo:", opciones, index=idx_sugerido, placeholder="Elija un producto...")
             pue_final = productos.get(art_sel, 1.0) if art_sel else 1.0
         else:
@@ -181,30 +199,19 @@ with tab_calc:
         st.divider()
 
         if modo_preconteo:
-            # Intenta extraer un número del texto de voz si hay uno
-            num_sugerido = None
-            if texto_filtro and any(char.isdigit() for char in texto_filtro):
-                numeros = [int(s) for s in texto_filtro.split() if s.isdigit()]
-                if numeros: num_sugerido = float(numeros[0])
-                
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
-            cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=num_sugerido, step=1.0, placeholder="Ej. 50")
+            cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=peso_sugerido, step=1.0, placeholder="Ej. 50")
             peso_bruto, tara_total, formula = 0.0, 0.0, "CONTEO MANUAL DIRECTO"
         else:
-            # Similar intento de extraer el peso dictado
-            peso_sugerido = None
-            if texto_filtro and any(char.isdigit() for char in texto_filtro):
-                numeros = [float(s) for s in texto_filtro.replace(',', '.').split() if s.replace('.','',1).isdigit()]
-                if numeros: peso_sugerido = numeros[0]
-
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2, c3 = st.columns(3)
-                with c1: t_cont = st.checkbox("Contenedor (0.016)")
-                with c2: t_bis = st.checkbox("Bisagra (0.045)")
+                with c1: t_cont = st.checkbox("Contenedor (0.016)", value=t_cont_sugerido)
+                with c2: t_bis = st.checkbox("Bisagra (0.045)", value=t_bis_sugerido)
                 with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
-        btn_save = st.form_submit_button("📥 GUARDAR REGISTRO")
+        # EL USUARIO VE TODOS LOS DATOS PRELLENADOS AQUÍ Y PUEDE EDITARLOS ANTES DE DAR CLIC
+        btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
 
     if btn_save:
         articulo_valido = art_sel is not None
@@ -247,7 +254,6 @@ with tab_historial:
     df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
     if not df.empty:
-        # 1. SECCIÓN DE RESULTADOS VISUALES (ARRIBA)
         art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", sorted(df['articulo'].unique()), index=None, placeholder="Seleccione para ver desglose...")
         
         msg_reporte = "" 
@@ -286,7 +292,6 @@ with tab_historial:
 
         st.divider()
         
-        # 2. SECCIÓN DE EXPORTACIÓN Y TARJETAS RECORTABLES
         st.subheader("🖨️ Exportación de Archivos")
         col_export1, col_export2, col_export3 = st.columns(3)
         
@@ -378,7 +383,6 @@ with tab_historial:
 
         st.divider()
         
-        # 3. SECCIÓN DE WHATSAPP
         st.subheader("📞 Configuración y Envíos a WhatsApp")
         numero_wa = st.text_input("Número destino (Incluir código de país, ej. 52 para México):", value="522283530069")
         
@@ -396,7 +400,6 @@ with tab_historial:
             
         st.divider()
         
-        # 4. ADMINISTRACIÓN DE BASE DE DATOS
         with st.expander("🗑️ Administración de Base de Datos"):
             st.dataframe(df, use_container_width=True)
             
