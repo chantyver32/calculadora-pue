@@ -11,6 +11,7 @@ from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
 import re  
+import streamlit.components.v1 as components  # <-- NUEVO: Importación para el parche del teclado
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
@@ -490,3 +491,17 @@ with tab_historial:
                 st.rerun()
     else:
         st.info("No hay pesajes registrados aún.")
+
+# --- NUEVO: AJUSTE DE TECLADO MÓVIL ---
+# Esto inyecta un pequeño script que cambia el teclado de los campos numéricos de "Siguiente" a "Listo/Ok"
+components.html(
+    """
+    <script>
+    const inputs = window.parent.document.querySelectorAll('input[type="number"]');
+    inputs.forEach(input => {
+        input.setAttribute('enterkeyhint', 'done');
+    });
+    </script>
+    """,
+    height=0
+)
