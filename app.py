@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime
 import urllib.parse
 import pytz
+import io
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
@@ -39,10 +40,17 @@ c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 conn.commit()
 
-# Función auxiliar para truncar a 2 decimales sin redondear
+# --- FUNCIONES DE FORMATEO ESTRICTO ---
 def truncar_dos_decimales(valor):
     if valor is None: return 0.0
     return int(valor * 100) / 100.0
+
+def formato_estricto(valor):
+    """Convierte a texto y corta en 2 decimales SIN redondear absolutamente nada."""
+    if pd.isna(valor) or valor is None: return "0.00"
+    s = f"{float(valor):.10f}" 
+    entero, decimal = s.split('.')
+    return f"{entero}.{decimal[:2]}"
 
 # 3. DICCIONARIO DE PRODUCTOS
 productos = {
@@ -80,7 +88,6 @@ with tab_calc:
         modo_preconteo = st.toggle("Modo: PRE-CONTEO MANUAL (Piezas directas)", value=False)
     
     with st.form(key="form_pesaje", clear_on_submit=True):
-        # Selección de Artículo
         if not nuevo_art:
             art_sel = st.selectbox("Seleccione Artículo:", sorted(productos.keys()), index=None, placeholder="Elija un producto...")
             pue_final = productos.get(art_sel, 1.0)
@@ -101,14 +108,13 @@ with tab_calc:
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=None, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2, c3 = st.columns(3)
-                with c1: t_cont = st.checkbox("Contenedor (0.045)")
-                with c2: t_bis = st.checkbox("Bisagra (0.016)")
+                with c1: t_cont = st.checkbox("Contenedor (0.016)")
+                with c2: t_bis = st.checkbox("Bisagra (0.045)")
                 with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("📥 GUARDAR REGISTRO")
 
     if btn_save:
-        # Validación de campos
         articulo_valido = art_sel is not None
         pue_valido = pue_final is not None
         
@@ -119,12 +125,12 @@ with tab_calc:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                tara_total = (0.045 if t_cont else 0) + (0.016 if t_bis else 0) + tm
+                tara_total = (0.016 if t_cont else 0) + (0.045 if t_bis else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
                 resultado_calc = (peso_neto - offset) / pue_final
-                resultado = truncar_dos_decimales(resultado_calc) # Truncar a 2 decimales sin redondear hacia arriba
+                resultado = truncar_dos_decimales(resultado_calc) 
                 formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
 
         if datos_listos:
@@ -139,7 +145,7 @@ with tab_calc:
                        resultado, formula))
             conn.commit()
             st.balloons()
-            st.success(f"✅ Registrado con éxito: {resultado:.2f} de {art_sel}")
+            st.success(f"✅ Registrado con éxito: {formato_estricto(resultado)} de {art_sel}")
         else:
             st.error("❌ Error: Faltan datos críticos para el registro.")
 
@@ -149,17 +155,17 @@ with tab_historial:
     df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
     if not df.empty:
+        # 1. SECCIÓN DE RESULTADOS VISUALES (ARRIBA)
         art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", sorted(df['articulo'].unique()), index=None, placeholder="Seleccione para ver desglose...")
         
-        # --- NUEVA SECCIÓN: ELEGIR NÚMERO DE WHATSAPP ---
-        st.write("📞 Configuración de Envío WhatsApp")
-        numero_wa = st.text_input("Número destino (Incluir código de país, ej. 52 para México):", value="522283530069")
+        msg_reporte = "" 
+        stock_teorico = None
         
         if art_filtro:
             df_art = df[df['articulo'] == art_filtro]
             total_real = truncar_dos_decimales(df_art['resultado_pue'].sum())
             
-            st.subheader(f"{art_filtro}")
+            st.subheader(f"Resultados de: {art_filtro}")
             st.table(df_art[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
                 'fecha_hora': 'Fecha/Hora', 'peso_bruto': 'P. Bruto', 'tara': 'Tara Total', 'pue': 'PUE Usado', 'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad/Resultado'
             }))
@@ -167,64 +173,139 @@ with tab_historial:
             st.divider()
             c_res1, c_res2, c_res3 = st.columns(3)
             with c_res1:
-                st.metric("TOTAL (PESAJE + PRECONTEO)", f"{total_real:.2f}")
+                st.metric("TOTAL (PESAJE + PRECONTEO)", formato_estricto(total_real))
             with c_res2:
                 stock_teorico = st.number_input("Valor en Sistema (Stock):", value=None, placeholder="Ingrese stock...")
             
             if stock_teorico is not None:
                 diferencia = truncar_dos_decimales(total_real - stock_teorico)
                 with c_res3:
-                    st.metric("DIFERENCIA", f"{diferencia:.2f}", delta=round(diferencia, 2), delta_color="inverse")
+                    st.metric("DIFERENCIA", formato_estricto(diferencia), delta=round(diferencia, 2), delta_color="inverse")
                 
-                desglose_txt = "\n".join([f"• {f} = {r:.2f}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
-                msg = (f"*REPORTE DE AUDITORÍA PUE*\n"
-                       f"------------------------------\n"
-                       f"*Producto:* {art_filtro}\n"
-                       f"*Total Acumulado:* {total_real:.2f}\n"
-                       f"*Stock Sistema:* {stock_teorico:.2f}\n"
-                       f"*Diferencia:* {diferencia:.2f}\n"
-                       f"------------------------------\n"
-                       f"*OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
-                
-                url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg)}"
-                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE A WHATSAPP</a>', unsafe_allow_html=True)
+                desglose_txt = "\n".join([f"• {f} = {formato_estricto(r)}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
+                msg_reporte = (f"*REPORTE DE AUDITORÍA PUE*\n"
+                               f"------------------------------\n"
+                               f"*Producto:* {art_filtro}\n"
+                               f"*Total Acumulado:* {formato_estricto(total_real)}\n"
+                               f"*Stock Sistema:* {formato_estricto(stock_teorico)}\n"
+                               f"*Diferencia:* {formato_estricto(diferencia)}\n"
+                               f"------------------------------\n"
+                               f"*OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
 
         st.divider()
         
-        # --- NUEVA SECCIÓN: DESCARGAR / ENVIAR CSV COMPLETO PARA TARJETAS ---
-        st.subheader("🖨️ Archivo CSV para Tarjetas (Truncado a 2 decimales)")
-        # Crear un df especifico para impresion con el formato deseado
-        df_impresion = df[['articulo', 'resultado_pue']].copy()
-        # Forzar el formato a texto con exactamente dos decimales (ya truncados de origen)
-        df_impresion['resultado_pue'] = df_impresion['resultado_pue'].apply(lambda x: f"{x:.2f}")
+        # 2. SECCIÓN DE CSV FÍSICO Y EXCEL ESTRUCTURADO (EN MEDIO)
+        col_export1, col_export2 = st.columns(2)
         
-        csv_data = df_impresion.to_csv(index=False)
-        
-        col_csv1, col_csv2 = st.columns(2)
-        with col_csv1:
+        with col_export1:
+            st.subheader("🖨️ Archivo CSV (Solo para Tarjetas)")
+            df_impresion = df[['articulo', 'resultado_pue']].copy()
+            df_impresion['resultado_pue'] = df_impresion['resultado_pue'].apply(formato_estricto)
+            csv_data = df_impresion.to_csv(index=False)
+            mensaje_csv = "📊 *CSV Generado para Impresión*\n\n" + csv_data
+            
             st.download_button(
-                label="⬇️ Descargar CSV",
+                label="⬇️ Descargar CSV para Tarjetas",
                 data=csv_data,
                 file_name="tarjetas_impresion_pue.csv",
-                mime="text/csv"
+                mime="text/csv",
+                use_container_width=True
             )
-        with col_csv2:
-            mensaje_csv = "📊 *CSV Generado para Impresión*\n\n" + csv_data
+            
+        with col_export2:
+            st.subheader("📊 Reporte Excel Oficial")
+            sucursal_in = st.text_input("Sucursal:", value="COSTA VERDE")
+            elabora_in = st.text_input("Elabora / Vendedor:", value="PEDRO GARCÍA")
+            
+            # Preparar Excel en memoria
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_empty = pd.DataFrame()
+                df_empty.to_excel(writer, sheet_name='Sugeridos', index=False)
+                workbook = writer.book
+                worksheet = writer.sheets['Sugeridos']
+                
+                # Formatos de celdas
+                format_title = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#8B0000', 'font_color': 'white', 'font_size': 12, 'border': 1})
+                format_subtitle = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_size': 11, 'border': 1})
+                format_label = workbook.add_format({'bold': True, 'border': 1})
+                format_data = workbook.add_format({'border': 1})
+                format_header = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#f2f2f2'})
+                format_center = workbook.add_format({'align': 'center', 'border': 1})
+                
+                # Encabezados
+                worksheet.merge_range('A1:D1', 'PASTELERÍA CHAMPLITTE, S.A. DE C.V.', format_title)
+                worksheet.merge_range('A2:D2', 'SUGERIDOS DEL DÍA', format_subtitle)
+                
+                fecha_hoy = datetime.now(pytz.timezone('America/Mexico_City')).strftime("%d/%m/%Y")
+                worksheet.write('A3', 'SUCURSAL', format_label)
+                worksheet.merge_range('B3:D3', sucursal_in, format_data)
+                
+                worksheet.write('A4', 'FECHA', format_label)
+                worksheet.merge_range('B4:D4', fecha_hoy, format_data)
+                
+                worksheet.write('A5', 'ELABORA', format_label)
+                worksheet.merge_range('B5:D5', elabora_in, format_data)
+                
+                headers_excel = ['DESCRIPCIÓN', 'CANTIDAD', 'FECHA DE CADUCIDAD', 'VENDEDOR']
+                for col_num, data in enumerate(headers_excel):
+                    worksheet.write(5, col_num, data, format_header)
+                    
+                # Llenar datos desglosados
+                row = 6
+                for index, row_data in df.iterrows():
+                    worksheet.write(row, 0, row_data['articulo'], format_data)
+                    worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
+                    worksheet.write(row, 2, "", format_center) # Fecha caducidad vacía
+                    worksheet.write(row, 3, elabora_in, format_data)
+                    row += 1
+                    
+                # Ajustar columnas
+                worksheet.set_column('A:A', 35)
+                worksheet.set_column('B:B', 15)
+                worksheet.set_column('C:C', 22)
+                worksheet.set_column('D:D', 20)
+
+            output.seek(0)
+            
+            st.download_button(
+                label="⬇️ Descargar Excel Formato Oficial",
+                data=output,
+                file_name="Reporte_Oficial_Champlitte.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+        st.divider()
+        
+        # 3. SECCIÓN DE WHATSAPP (HASTA ABAJO)
+        st.subheader("📞 Configuración y Envíos a WhatsApp")
+        numero_wa = st.text_input("Número destino (Incluir código de país, ej. 52 para México):", value="522283530069")
+        
+        col_wa1, col_wa2 = st.columns(2)
+        with col_wa1:
+            if art_filtro and stock_teorico is not None:
+                url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_reporte)}"
+                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE DE ESTE ARTÍCULO</a>', unsafe_allow_html=True)
+            else:
+                st.info("📌 Selecciona un artículo e ingresa el stock arriba para habilitar el reporte de auditoría.")
+                
+        with col_wa2:
             url_wa_csv = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(mensaje_csv)}"
-            st.markdown(f'<a href="{url_wa_csv}" target="_blank" class="btn-wa" style="margin: 0px;">📲 ENVIAR CSV A WHATSAPP</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{url_wa_csv}" target="_blank" class="btn-wa" style="margin: 0px;">📲 ENVIAR CSV COMPLETO</a>', unsafe_allow_html=True)
             
         st.divider()
         
+        # 4. ADMINISTRACIÓN DE BASE DE DATOS
         with st.expander("🗑️ Administración de Base de Datos"):
             st.dataframe(df, use_container_width=True)
             
-            # --- NUEVA SECCIÓN: ELIMINAR INDIVIDUAL ---
             st.markdown("#### Eliminar Registro Individual")
             c_del1, c_del2 = st.columns([1, 2])
             with c_del1:
                 id_a_eliminar = st.number_input("Ingresa el ID a eliminar:", min_value=1, step=1)
             with c_del2:
-                st.write("") # Espaciado para alinear
+                st.write("") 
                 st.write("")
                 if st.button("ELIMINAR ESTE ID"):
                     c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (id_a_eliminar,))
