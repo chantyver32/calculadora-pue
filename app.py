@@ -10,7 +10,7 @@ from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
-import re  # <--- NUEVA IMPORTACIÓN PARA EXTRAER NÚMEROS Y TEXTO INTELIGENTEMENTE
+import re  
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
@@ -128,7 +128,7 @@ tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada", "📋 Auditoría y Repo
 with tab_calc:
     st.title("⚖️ Registro de Pesaje")
     
-    st.info("🎤 **Ingreso por Voz:** Dicta el nombre, el peso y si lleva contenedor o bisagra. Revisa y edita antes de guardar.")
+    st.info("🎤 **Ingreso por Voz:** Dicta algo como 'Volován, peso unitario de 0.5, peso 15 kilos con bisagra'.")
     audio_bytes = st.audio_input("Grabar voz")
     texto_reconocido = ""
     
@@ -144,13 +144,15 @@ with tab_calc:
             except sr.RequestError:
                 st.error("Error en el servicio de reconocimiento de voz.")
 
-    # --- LÓGICA INTELIGENTE DE INTERPRETACIÓN DE VOZ ---
+    # --- LÓGICA INTELIGENTE DE INTERPRETACIÓN DE VOZ MEJORADA ---
     texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
     
     idx_sugerido = None
     peso_sugerido = None
+    pue_sugerido = None
     t_cont_sugerido = False
     t_bis_sugerido = False
+    nombre_limpio_sugerido = ""
     
     opciones = sorted(productos.keys())
     
@@ -159,20 +161,34 @@ with tab_calc:
         if "CONTENEDOR" in texto_filtro: t_cont_sugerido = True
         if "BISAGRA" in texto_filtro: t_bis_sugerido = True
         
-        # 2. Buscar Números (acepta decimales como 2.5 o 2,5)
-        numeros = re.findall(r'\d+(?:[.,]\d+)?', texto_filtro)
-        if numeros:
-            peso_sugerido = float(numeros[0].replace(',', '.'))
+        # 2. Extraer el Peso Unitario (Busca las palabras PESO UNITARIO, UNITARIO o PUE seguidas de un número)
+        match_pue = re.search(r'(?:PESO UNITARIO|UNITARIO|PUE|ESTÁNDAR|ESTANDAR)[^\d]*(\d+(?:[.,]\d+)?)', texto_filtro)
+        if match_pue:
+            pue_sugerido = float(match_pue.group(1).replace(',', '.'))
             
-        # 3. Buscar el Artículo (Ignoramos palabras comunes y números para enfocarnos en el producto)
-        palabras_ignoradas = ['KG', 'KILOS', 'KILO', 'GRAMOS', 'GR', 'PIEZAS', 'PIEZA', 'PZAS', 'CON', 'SIN', 'Y', 'DE', 'EL', 'LA', 'CONTENEDOR', 'BISAGRA', 'LLEVA']
-        # Nos quedamos solo con palabras clave (ej. "AGUA", "CIEL")
-        palabras_clave = [p for p in texto_filtro.split() if p not in palabras_ignoradas and not re.match(r'\d', p)]
+        # 3. Extraer el Peso Bruto (Busca todos los números y descarta el que ya asignamos al Peso Unitario)
+        numeros_str = re.findall(r'\d+(?:[.,]\d+)?', texto_filtro)
+        numeros_floats = [float(n.replace(',', '.')) for n in numeros_str]
         
+        if numeros_floats:
+            if pue_sugerido in numeros_floats:
+                numeros_floats.remove(pue_sugerido) # Quitamos el Peso Unitario de la lista de números
+            if numeros_floats:
+                peso_sugerido = numeros_floats[0] # El número que sobra es el Peso Bruto
+                
+        # 4. Limpiar el texto para que el nombre del Nuevo Artículo no incluya números ni palabras raras
+        # El orden es importante aquí: quitamos "PESO UNITARIO" primero para que no quede huerfano
+        palabras_basura = [r'\d+(?:[.,]\d+)?', 'PESO UNITARIO', 'PUE', 'PESO', 'UNITARIO', 'ESTÁNDAR', 'ESTANDAR', 'KILOS', 'KG', 'GRAMOS', 'CON', 'SIN', 'Y', 'DE', 'EL', 'LA', 'CONTENEDOR', 'BISAGRA', 'LLEVA', 'ASIGNAR']
+        texto_limpio = texto_filtro
+        for p in palabras_basura:
+            texto_limpio = re.sub(r'\b' + p + r'\b', '', texto_limpio)
+        nombre_limpio_sugerido = ' '.join(texto_limpio.split()) # Quita espacios dobles
+        
+        # 5. Intentar buscar en artículos existentes (si se eligió el modo normal)
+        palabras_clave = nombre_limpio_sugerido.split()
         if palabras_clave:
             max_coincidencias = 0
             for i, prod in enumerate(opciones):
-                # Contamos cuántas de las palabras clave dictadas están en el nombre del producto
                 coincidencias = sum(1 for palabra in palabras_clave if palabra in prod.upper())
                 if coincidencias > max_coincidencias:
                     max_coincidencias = coincidencias
@@ -192,9 +208,11 @@ with tab_calc:
         else:
             c_n1, c_n2 = st.columns([2,1])
             with c_n1:
-                art_sel = st.text_input("Nombre del Nuevo Artículo:", value=texto_filtro if texto_filtro else None, placeholder="Ej. CAJA PERSONALIZADA")
+                # AQUÍ SE COLOCA EL NOMBRE LIMPIO SIN NÚMEROS NI PALABRAS RARAS
+                art_sel = st.text_input("Nombre del Nuevo Artículo:", value=nombre_limpio_sugerido if nombre_limpio_sugerido else None, placeholder="Ej. CAJA PERSONALIZADA")
             with c_n2:
-                pue_final = st.number_input("Asignar PUE:", value=None, format="%.4f", placeholder="0.0000")
+                # AQUÍ SE COLOCA EL PESO UNITARIO DETECTADO
+                pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
 
         st.divider()
 
@@ -210,11 +228,10 @@ with tab_calc:
                 with c2: t_bis = st.checkbox("Bisagra (0.045)", value=t_bis_sugerido)
                 with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
-        # EL USUARIO VE TODOS LOS DATOS PRELLENADOS AQUÍ Y PUEDE EDITARLOS ANTES DE DAR CLIC
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
 
     if btn_save:
-        articulo_valido = art_sel is not None
+        articulo_valido = art_sel is not None and art_sel.strip() != ""
         pue_valido = pue_final is not None
         
         if modo_preconteo:
@@ -246,7 +263,7 @@ with tab_calc:
             st.balloons()
             st.success(f"✅ Registrado con éxito: {formato_estricto(resultado)} de {art_sel}")
         else:
-            st.error("❌ Error: Faltan datos críticos para el registro.")
+            st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
 # --- TAB 2: AUDITORÍA ---
 with tab_historial:
