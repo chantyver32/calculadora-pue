@@ -78,7 +78,7 @@ def generar_word_tarjetas(df):
         cell = table.cell(r, c)
         
         cell.width = Cm(5)
-        table.rows[r].height = Cm(5)
+        table.rows[r].height = Cm(3)
         table.rows[r].height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
         
         articulo = str(row_data['articulo'])
@@ -318,7 +318,7 @@ with tab_historial:
             word_file = generar_word_tarjetas(df_impresion)
             
             st.download_button(
-                label="📄 Descargar Tarjetas en Word (5x5 cm)",
+                label="📄 Descargar Tarjetas en Word",
                 data=word_file,
                 file_name="Tarjetas_Recortables.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
