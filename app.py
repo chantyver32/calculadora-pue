@@ -221,9 +221,9 @@ with tab_historial:
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 df_empty = pd.DataFrame()
-                df_empty.to_excel(writer, sheet_name='Sugeridos', index=False)
+                df_empty.to_excel(writer, sheet_name='Baja de insumos', index=False)
                 workbook = writer.book
-                worksheet = writer.sheets['Sugeridos']
+                worksheet = writer.sheets['Baja de insumos']
                 
                 # Formatos de celdas
                 format_title = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#8B0000', 'font_color': 'white', 'font_size': 12, 'border': 1})
@@ -235,7 +235,7 @@ with tab_historial:
                 
                 # Encabezados
                 worksheet.merge_range('A1:D1', 'PASTELERÍA CHAMPLITTE, S.A. DE C.V.', format_title)
-                worksheet.merge_range('A2:D2', 'SUGERIDOS DEL DÍA', format_subtitle)
+                worksheet.merge_range('A2:D2', 'BAJA DE INSUMOS', format_subtitle)
                 
                 fecha_hoy = datetime.now(pytz.timezone('America/Mexico_City')).strftime("%d/%m/%Y")
                 worksheet.write('A3', 'SUCURSAL', format_label)
@@ -247,23 +247,24 @@ with tab_historial:
                 worksheet.write('A5', 'ELABORA', format_label)
                 worksheet.merge_range('B5:D5', elabora_in, format_data)
                 
-                headers_excel = ['DESCRIPCIÓN', 'CANTIDAD', 'FECHA DE CADUCIDAD', 'VENDEDOR']
+                # Cambio en el nombre de la columna
+                headers_excel = ['DESCRIPCIÓN', 'CANTIDAD', 'CÁLCULOS REALIZADOS', 'VENDEDOR']
                 for col_num, data in enumerate(headers_excel):
                     worksheet.write(5, col_num, data, format_header)
                     
-                # Llenar datos desglosados
+                # Llenar datos desglosados (ahora integrando detalle_formula)
                 row = 6
                 for index, row_data in df.iterrows():
                     worksheet.write(row, 0, row_data['articulo'], format_data)
                     worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
-                    worksheet.write(row, 2, "", format_center) # Fecha caducidad vacía
+                    worksheet.write(row, 2, row_data['detalle_formula'], format_center) 
                     worksheet.write(row, 3, elabora_in, format_data)
                     row += 1
                     
                 # Ajustar columnas
                 worksheet.set_column('A:A', 35)
                 worksheet.set_column('B:B', 15)
-                worksheet.set_column('C:C', 22)
+                worksheet.set_column('C:C', 45) # Se hizo más ancha para que quepa bien la fórmula
                 worksheet.set_column('D:D', 20)
 
             output.seek(0)
@@ -271,7 +272,7 @@ with tab_historial:
             st.download_button(
                 label="⬇️ Descargar Excel Formato Oficial",
                 data=output,
-                file_name="Reporte_Oficial_Champlitte.xlsx",
+                file_name="Reporte_Baja_Insumos_Champlitte.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
