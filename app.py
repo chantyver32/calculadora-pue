@@ -129,7 +129,7 @@ with tab_calc:
     st.title("⚖️ Registro de Pesaje")
     
     st.info("🎤 **Ingreso por Voz:** Dicta algo como 0.620 kg de capacillo chino en contenedor.")
-    audio_bytes = st.audio_input("Grabar voz")
+    audio_bytes = st.audio_input("Grabar voz para registro", key="audio_reg")
     texto_reconocido = ""
     
     if audio_bytes:
@@ -161,30 +161,29 @@ with tab_calc:
         if "CONTENEDOR" in texto_filtro: t_cont_sugerido = True
         if "BISAGRA" in texto_filtro: t_bis_sugerido = True
         
-        # 2. Extraer el Peso Unitario (Busca las palabras PESO UNITARIO, UNITARIO o PUE seguidas de un número)
+        # 2. Extraer el Peso Unitario
         match_pue = re.search(r'(?:PESO UNITARIO|UNITARIO|PUE|ESTÁNDAR|ESTANDAR)[^\d]*(\d+(?:[.,]\d+)?)', texto_filtro)
         if match_pue:
             pue_sugerido = float(match_pue.group(1).replace(',', '.'))
             
-        # 3. Extraer el Peso Bruto (Busca todos los números y descarta el que ya asignamos al Peso Unitario)
+        # 3. Extraer el Peso Bruto
         numeros_str = re.findall(r'\d+(?:[.,]\d+)?', texto_filtro)
         numeros_floats = [float(n.replace(',', '.')) for n in numeros_str]
         
         if numeros_floats:
             if pue_sugerido in numeros_floats:
-                numeros_floats.remove(pue_sugerido) # Quitamos el Peso Unitario de la lista de números
+                numeros_floats.remove(pue_sugerido) 
             if numeros_floats:
-                peso_sugerido = numeros_floats[0] # El número que sobra es el Peso Bruto
+                peso_sugerido = numeros_floats[0] 
                 
-        # 4. Limpiar el texto para que el nombre del Nuevo Artículo no incluya números ni palabras raras
-        # El orden es importante aquí: quitamos "PESO UNITARIO" primero para que no quede huerfano
+        # 4. Limpiar el texto para el nombre
         palabras_basura = [r'\d+(?:[.,]\d+)?', 'PESO UNITARIO', 'PUE', 'PESO', 'UNITARIO', 'ESTÁNDAR', 'ESTANDAR', 'KILOS', 'KG', 'GRAMOS', 'CON', 'SIN', 'Y', 'DE', 'EL', 'LA', 'CONTENEDOR', 'BISAGRA', 'LLEVA', 'ASIGNAR']
         texto_limpio = texto_filtro
         for p in palabras_basura:
             texto_limpio = re.sub(r'\b' + p + r'\b', '', texto_limpio)
-        nombre_limpio_sugerido = ' '.join(texto_limpio.split()) # Quita espacios dobles
+        nombre_limpio_sugerido = ' '.join(texto_limpio.split()) 
         
-        # 5. Intentar buscar en artículos existentes (si se eligió el modo normal)
+        # 5. Intentar buscar en artículos existentes
         palabras_clave = nombre_limpio_sugerido.split()
         if palabras_clave:
             max_coincidencias = 0
@@ -208,10 +207,8 @@ with tab_calc:
         else:
             c_n1, c_n2 = st.columns([2,1])
             with c_n1:
-                # AQUÍ SE COLOCA EL NOMBRE LIMPIO SIN NÚMEROS NI PALABRAS RARAS
                 art_sel = st.text_input("Nombre del Nuevo Artículo:", value=nombre_limpio_sugerido if nombre_limpio_sugerido else None, placeholder="Ej. CAJA PERSONALIZADA")
             with c_n2:
-                # AQUÍ SE COLOCA EL PESO UNITARIO DETECTADO
                 pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
 
         st.divider()
@@ -271,7 +268,36 @@ with tab_historial:
     df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
     if not df.empty:
-        art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", sorted(df['articulo'].unique()), index=None, placeholder="Seleccione para ver desglose...")
+        # --- FILTRO POR VOZ EN TAB 2 ---
+        st.info("🎤 **Buscar Artículo por Voz:** Dicta el nombre del producto que quieres auditar.")
+        audio_filtro_bytes = st.audio_input("Grabar voz para buscar", key="audio_filtro")
+        texto_busqueda = ""
+        idx_filtro_sugerido = None
+        opciones_filtro = sorted(df['articulo'].unique())
+        
+        if audio_filtro_bytes:
+            recognizer_filtro = sr.Recognizer()
+            with sr.AudioFile(audio_filtro_bytes) as source_filtro:
+                audio_data_filtro = recognizer_filtro.record(source_filtro)
+                try:
+                    texto_busqueda = recognizer_filtro.recognize_google(audio_data_filtro, language="es-MX").upper()
+                    st.success(f"**Buscando:** {texto_busqueda}")
+                except sr.UnknownValueError:
+                    st.error("No se pudo entender el audio de búsqueda.")
+                except sr.RequestError:
+                    st.error("Error en el servicio de reconocimiento de voz.")
+                    
+        if texto_busqueda:
+            palabras_clave_busqueda = texto_busqueda.split()
+            max_coincidencias_busqueda = 0
+            for i, prod in enumerate(opciones_filtro):
+                coincidencias = sum(1 for palabra in palabras_clave_busqueda if palabra in prod.upper())
+                if coincidencias > max_coincidencias_busqueda:
+                    max_coincidencias_busqueda = coincidencias
+                    idx_filtro_sugerido = i
+
+        # Selectbox que usa el índice sugerido por voz
+        art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", opciones_filtro, index=idx_filtro_sugerido, placeholder="Seleccione para ver desglose...")
         
         msg_reporte = "" 
         stock_teorico = None
@@ -309,6 +335,13 @@ with tab_historial:
 
         st.divider()
         
+        # Inputs de información global (Movidos aquí para que apliquen a Word, Excel y WhatsApp)
+        col_info1, col_info2 = st.columns(2)
+        with col_info1:
+            sucursal_in = st.text_input("Sucursal:", value="COSTA VERDE")
+        with col_info2:
+            elabora_in = st.text_input("Elabora / Vendedor:", value="PEDRO GARCÍA")
+
         st.subheader("🖨️ Exportación de Archivos")
         col_export1, col_export2, col_export3 = st.columns(3)
         
@@ -327,8 +360,6 @@ with tab_historial:
             
         with col_export2:
             st.markdown("**2. Reporte Excel Oficial**")
-            sucursal_in = st.text_input("Sucursal:", value="COSTA VERDE")
-            elabora_in = st.text_input("Elabora / Vendedor:", value="PEDRO GARCÍA")
             
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -366,7 +397,7 @@ with tab_historial:
                     worksheet.write(row, 0, row_data['articulo'], format_data)
                     worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
                     worksheet.write(row, 2, row_data['detalle_formula'], format_center) 
-                    worksheet.write(row, 3, elabora_in, format_data)
+                    worksheet.write(row, 3, elabora_in, format_center) # ¡Centrado!
                     row += 1
                     
                 worksheet.set_column('A:A', 35)
@@ -385,18 +416,21 @@ with tab_historial:
             )
 
         with col_export3:
-            st.markdown("**3. CSV Plano**")
-            df_impresion['resultado_pue'] = df_impresion['resultado_pue'].apply(formato_estricto)
-            csv_data = df_impresion.to_csv(index=False)
-            mensaje_csv = "📊 *CSV Generado para Impresión*\n\n" + csv_data
+            st.markdown("**3. Generar Reporte**")
             
-            st.download_button(
-                label="⬇️ Descargar CSV",
-                data=csv_data,
-                file_name="tarjetas_impresion_pue.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+            # Texto ordenado para WhatsApp sin CSV y sin vendedor en cada fila
+            reporte_wa_texto = f"📊 *REPORTE WHATSAPP - BAJA DE INSUMOS*\n"
+            reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
+            reporte_wa_texto += f"👤 *Elabora:* {elabora_in}\n"
+            reporte_wa_texto += f"📅 *Fecha:* {datetime.now(pytz.timezone('America/Mexico_City')).strftime('%d/%m/%Y')}\n\n"
+            reporte_wa_texto += "📦 *REGISTROS:*\n"
+            
+            for index, row_data in df.iterrows():
+                cantidad_exacta = formato_estricto(row_data['resultado_pue'])
+                reporte_wa_texto += f"▪️ *{row_data['articulo']}*\n"
+                reporte_wa_texto += f"   Cant: {cantidad_exacta} | Oper: {row_data['detalle_formula']}\n"
+                
+            st.info("El Reporte WhatsApp está listo. Envía desde los botones de abajo.")
 
         st.divider()
         
@@ -412,30 +446,45 @@ with tab_historial:
                 st.info("📌 Selecciona un artículo e ingresa el stock arriba para habilitar el reporte de auditoría.")
                 
         with col_wa2:
-            url_wa_csv = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(mensaje_csv)}"
-            st.markdown(f'<a href="{url_wa_csv}" target="_blank" class="btn-wa" style="margin: 0px;">📲 ENVIAR CSV COMPLETO</a>', unsafe_allow_html=True)
+            url_wa_reporte = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(reporte_wa_texto)}"
+            st.markdown(f'<a href="{url_wa_reporte}" target="_blank" class="btn-wa" style="margin: 0px;">📲 ENVIAR REPORTE WHATSAPP DE TODO</a>', unsafe_allow_html=True)
             
         st.divider()
         
-        with st.expander("🗑️ Administración de Base de Datos"):
-            st.dataframe(df, use_container_width=True)
+        with st.expander("🗑️ Administración de Base de Datos - Eliminar Registros", expanded=True):
+            st.markdown("#### Selecciona el renglón que deseas eliminar")
             
-            st.markdown("#### Eliminar Registro Individual")
-            c_del1, c_del2 = st.columns([1, 2])
-            with c_del1:
-                id_a_eliminar = st.number_input("Ingresa el ID a eliminar:", min_value=1, step=1)
-            with c_del2:
-                st.write("") 
-                st.write("")
-                if st.button("ELIMINAR ESTE ID"):
-                    c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (id_a_eliminar,))
+            c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns([0.5, 3, 1, 2, 1])
+            c_h1.write("**ID**")
+            c_h2.write("**Artículo**")
+            c_h3.write("**Cantidad**")
+            c_h4.write("**Fecha**")
+            c_h5.write("**Acción**")
+            
+            st.divider()
+            
+            for _, row_del in df.iterrows():
+                c_r1, c_r2, c_r3, c_r4, c_r5 = st.columns([0.5, 3, 1, 2, 1], vertical_alignment="center")
+                
+                c_r1.write(str(row_del['id']))
+                c_r2.write(row_del['articulo'])
+                c_r3.write(formato_estricto(row_del['resultado_pue']))
+                
+                try:
+                    dt_obj = datetime.strptime(row_del['fecha_hora'], "%Y-%m-%d %H:%M:%S")
+                    c_r4.write(dt_obj.strftime("%d/%m %H:%M"))
+                except:
+                    c_r4.write(row_del['fecha_hora'])
+                
+                if c_r5.button("🗑️ Eliminar", key=f"del_{row_del['id']}", use_container_width=True):
+                    c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (row_del['id'],))
                     conn.commit()
-                    st.success(f"ID {id_a_eliminar} eliminado.")
+                    st.success(f"Registro eliminado correctamente.")
                     st.rerun()
             
             st.divider()
             
-            if st.button("LIMPIAR TODA LA BASE DE DATOS"):
+            if st.button("🚨 LIMPIAR TODA LA BASE DE DATOS", type="primary"):
                 c.execute("DELETE FROM pesajes_individuales")
                 conn.commit()
                 st.rerun()
