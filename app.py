@@ -78,7 +78,7 @@ def generar_word_tarjetas(df):
         cell = table.cell(r, c)
         
         cell.width = Cm(5)
-        table.rows[r].height = Cm(3)
+        table.rows[r].height = Cm(2)
         table.rows[r].height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
         
         articulo = str(row_data['articulo'])
