@@ -1,7 +1,6 @@
 streamlit
 pandas
 xlsxwriter
-pytz
-pip install
-python-docx 
+python-docx
 SpeechRecognition
+pytz
