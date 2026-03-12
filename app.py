@@ -128,7 +128,7 @@ tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada", "📋 Auditoría y Repo
 with tab_calc:
     st.title("⚖️ Registro de Pesaje")
     
-    st.info("🎤 **Ingreso por Voz:** Dicta algo como 'Volován, peso unitario de 0.5, peso 15 kilos con bisagra'.")
+    st.info("🎤 **Ingreso por Voz:** Dicta algo como 0.620 kg de capacillo chino en contenedor.")
     audio_bytes = st.audio_input("Grabar voz")
     texto_reconocido = ""
     
