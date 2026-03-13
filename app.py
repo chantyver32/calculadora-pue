@@ -55,6 +55,29 @@ c.execute('''CREATE TABLE IF NOT EXISTS auditoria_stock
              (articulo TEXT PRIMARY KEY, total_real REAL, stock REAL, diferencia REAL)''')
 conn.commit()
 
+# --- BARRA LATERAL (SIDEBAR) ESTILO IMAGEN ---
+with st.sidebar:
+    st.markdown("### ⚙️ Configuración")
+    
+    # Lista de números de WhatsApp para el desplegable (Puedes agregar más aquí)
+    opciones_wa = [
+        "522283530069",
+        "522280000000",  # Cambia esto por otro número si lo necesitas
+        "522281111111"
+    ]
+    numero_wa = st.selectbox("📱 Número WhatsApp", opciones_wa)
+    
+    with st.expander("🚨 Zona de Peligro", expanded=True):
+        confirmar_borrado = st.checkbox("Confirmar que deseo borrar todo")
+        
+        # El botón solo se habilita si el checkbox está marcado
+        if st.button("⚠️ EJECUTAR RESET TOTAL", disabled=not confirmar_borrado, type="secondary"):
+            c.execute("DELETE FROM pesajes_individuales")
+            c.execute("DELETE FROM auditoria_stock")  
+            conn.commit()
+            st.success("Base de datos reseteada.")
+            st.rerun()
+
 # --- FUNCIONES ---
 def truncar_dos_decimales(valor):
     if valor is None: return 0.0
@@ -456,11 +479,9 @@ with tab_historial:
                 for index, row_aud in df_auditoria.iterrows():
                     art_actual = row_aud['articulo']
                     
-                    # Filtramos df_combined para sacar todos los valores individuales que conforman el total físico
                     df_art_desglose = df_combined[df_combined['articulo'] == art_actual]
                     sumandos = [formato_estricto(val) for val in df_art_desglose['resultado_pue']]
                     
-                    # Creamos el desglose estilo 20+34=54
                     if len(sumandos) > 1:
                         desglose_str = f"{' + '.join(sumandos)} = {formato_estricto(row_aud['total_real'])}"
                     else:
@@ -477,9 +498,7 @@ with tab_historial:
 
         st.divider()
         
-        st.subheader("📞 Configuración y Envíos a WhatsApp")
-        numero_wa = st.text_input("Número destino (Incluir código de país, ej. 52 para México):", value="522283530069")
-        
+        st.subheader("📞 Envíos a WhatsApp")
         col_wa1, col_wa2 = st.columns(2)
         with col_wa1:
             if art_filtro and msg_reporte:
@@ -520,14 +539,6 @@ with tab_historial:
                     st.rerun()
                 else:
                     st.info("No detecté ninguna fila eliminada para guardar.")
-            
-            st.divider()
-            
-            if st.button("🚨 LIMPIAR TODA LA BASE DE DATOS", type="primary"):
-                c.execute("DELETE FROM pesajes_individuales")
-                c.execute("DELETE FROM auditoria_stock")  
-                conn.commit()
-                st.rerun()
 
         # --- SECCIÓN DE DATOS PROTEGIDOS ---
         st.divider()
