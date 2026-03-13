@@ -337,13 +337,13 @@ with tab_historial:
                 with c_res3:
                     st.metric("DIFERENCIA", formato_estricto(diferencia), delta=round(diferencia, 2), delta_color="inverse")
                 
-                desglose_txt = "\n".join([f"• {f} = {formato_estricto(r)}" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
+                desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
                 msg_reporte = (f"*REPORTE DE AUDITORÍA PUE*\n"
                                f"------------------------------\n"
                                f"*Producto:* {art_filtro}\n"
-                               f"*Total Acumulado:* {formato_estricto(total_real)}\n"
-                               f"*Stock Sistema:* {formato_estricto(stock_teorico)}\n"
-                               f"*Diferencia:* {formato_estricto(diferencia)}\n"
+                               f"*Total Acumulado:* *{formato_estricto(total_real)}*\n"
+                               f"*Stock Sistema:* *{formato_estricto(stock_teorico)}*\n"
+                               f"*Diferencia:* *{formato_estricto(diferencia)}*\n"
                                f"------------------------------\n"
                                f"*OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
 
@@ -441,7 +441,8 @@ with tab_historial:
             for index, row_data in df_combined.iterrows():
                 cantidad_exacta = formato_estricto(row_data['resultado_pue'])
                 reporte_wa_texto += f"▪️ *{row_data['articulo']}*\n"
-                reporte_wa_texto += f"   Cant: {cantidad_exacta} | Oper: {row_data['detalle_formula']}\n"
+                # AQUI AGREGAMOS LOS ASTERISCOS PARA NEGRITAS
+                reporte_wa_texto += f"   Cant: *{cantidad_exacta}* | Oper: {row_data['detalle_formula']}\n"
                 
             st.info("El Reporte WhatsApp está listo. Envía desde los botones de abajo.")
 
