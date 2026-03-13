@@ -45,6 +45,11 @@ c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
+
+# NUEVA TABLA PARA DATOS GUARDADOS APARTE
+c.execute('''CREATE TABLE IF NOT EXISTS pesajes_guardados 
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
+             peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 conn.commit()
 
 # --- FUNCIONES ---
@@ -444,8 +449,7 @@ with tab_historial:
         with st.expander("🗑️ Administración de Base de Datos - Eliminar Registros", expanded=True):
             st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar.")
             
-            # --- NUEVA TABLA INTERACTIVA TIPO CSV ---
-            columnas_bloqueadas = df.columns.tolist() # Evita que editen los datos, solo permite borrar
+            columnas_bloqueadas = df.columns.tolist() 
             edited_df = st.data_editor(
                 df,
                 use_container_width=True,
@@ -455,7 +459,6 @@ with tab_historial:
                 key="editor_db"
             )
             
-            # Botón estilo imagen para guardar los cambios
             if st.button("💾 Guardar Cambios en Tabla", use_container_width=True):
                 original_ids = set(df['id'])
                 current_ids = set(edited_df['id'])
@@ -476,6 +479,56 @@ with tab_historial:
                 c.execute("DELETE FROM pesajes_individuales")
                 conn.commit()
                 st.rerun()
+
+        # --- NUEVA SECCIÓN DE DATOS PROTEGIDOS ---
+        st.divider()
+        with st.expander("🛡️ Guardar Aparte (Registros Protegidos)", expanded=False):
+            st.markdown("Selecciona registros de la tabla principal para guardarlos en una bóveda segura. Al **Limpiar toda la base de datos** de arriba, estos registros **no se borrarán**.")
+            
+            opciones_proteger = df.apply(lambda x: f"ID {x['id']} | {x['articulo']} | {x['resultado_pue']} u.", axis=1).tolist()
+            seleccionados_para_proteger = st.multiselect("Selecciona los registros a guardar aparte:", opciones_proteger)
+            
+            if st.button("📥 Guardar seleccionados en la Bóveda"):
+                if seleccionados_para_proteger:
+                    for sel in seleccionados_para_proteger:
+                        id_val = sel.split(" | ")[0].replace("ID ", "")
+                        c.execute("""INSERT INTO pesajes_guardados (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
+                                     SELECT fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
+                                     FROM pesajes_individuales WHERE id = ?""", (id_val,))
+                    conn.commit()
+                    st.success(f"Se han guardado {len(seleccionados_para_proteger)} registros de forma segura.")
+                    st.rerun()
+                else:
+                    st.warning("Selecciona al menos un registro de la lista.")
+                    
+            st.divider()
+            st.markdown("#### 🗃️ Registros Guardados Actualmente")
+            df_guardados = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
+            
+            if not df_guardados.empty:
+                edited_guardados = st.data_editor(
+                    df_guardados,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    hide_index=True,
+                    disabled=df_guardados.columns.tolist(),
+                    key="editor_db_guardados"
+                )
+                
+                if st.button("💾 Eliminar filas borradas de la Bóveda", use_container_width=True):
+                    original_ids_g = set(df_guardados['id'])
+                    current_ids_g = set(edited_guardados['id'])
+                    ids_to_delete_g = original_ids_g - current_ids_g
+                    
+                    if ids_to_delete_g:
+                        for del_id in ids_to_delete_g:
+                            c.execute("DELETE FROM pesajes_guardados WHERE id = ?", (del_id,))
+                        conn.commit()
+                        st.success(f"Se eliminaron {len(ids_to_delete_g)} registros guardados.")
+                        st.rerun()
+            else:
+                st.info("No hay registros guardados aparte en este momento.")
+
     else:
         st.info("No hay pesajes registrados aún.")
 
