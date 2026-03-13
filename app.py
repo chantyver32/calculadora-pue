@@ -5,6 +5,7 @@ from datetime import datetime
 import urllib.parse
 import pytz
 import io
+import time
 import speech_recognition as sr
 from docx import Document
 from docx.shared import Cm, Pt
@@ -50,7 +51,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS pesajes_guardados
              (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 
-# NUEVA TABLA PARA GUARDAR EL RESUMEN DE STOCK Y DIFERENCIAS
 c.execute('''CREATE TABLE IF NOT EXISTS auditoria_stock 
              (articulo TEXT PRIMARY KEY, total_real REAL, stock REAL, diferencia REAL)''')
 conn.commit()
@@ -59,24 +59,28 @@ conn.commit()
 with st.sidebar:
     st.markdown("### ⚙️ Configuración")
     
-    # Lista de números de WhatsApp para el desplegable (Puedes agregar más aquí)
+    # Lista de números de WhatsApp (puedes agregar o modificar los que necesites)
     opciones_wa = [
         "522283530069",
-        "522280000000",  # Cambia esto por otro número si lo necesitas
-        "522281111111"
+        "522281111111", 
+        "522280000000"  
     ]
     numero_wa = st.selectbox("📱 Número WhatsApp", opciones_wa)
     
     with st.expander("🚨 Zona de Peligro", expanded=True):
         confirmar_borrado = st.checkbox("Confirmar que deseo borrar todo")
         
-        # El botón solo se habilita si el checkbox está marcado
-        if st.button("⚠️ EJECUTAR RESET TOTAL", disabled=not confirmar_borrado, type="secondary"):
-            c.execute("DELETE FROM pesajes_individuales")
-            c.execute("DELETE FROM auditoria_stock")  
-            conn.commit()
-            st.success("Base de datos reseteada.")
-            st.rerun()
+        # Comportamiento exacto de las imágenes
+        if st.button("⚠️ EJECUTAR RESET TOTAL", use_container_width=True):
+            if not confirmar_borrado:
+                st.error("Debes confirmar primero")
+            else:
+                c.execute("DELETE FROM pesajes_individuales")
+                c.execute("DELETE FROM auditoria_stock")  
+                conn.commit()
+                st.success("✅ Base de datos limpiada por completo")
+                time.sleep(1.5) # Pausa breve para que veas el mensaje verde antes de recargar
+                st.rerun()
 
 # --- FUNCIONES ---
 def truncar_dos_decimales(valor):
@@ -513,8 +517,8 @@ with tab_historial:
             
         st.divider()
         
-        with st.expander("🗑️ Administración de Base de Datos - Eliminar Registros", expanded=True):
-            st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar.")
+        with st.expander("🗑️ Administración de Registros Individuales", expanded=True):
+            st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar un registro de la sesión actual.")
             
             columnas_bloqueadas = df_actual.columns.tolist() 
             edited_df = st.data_editor(
