@@ -46,7 +46,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales
              (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
 
-# NUEVA TABLA PARA DATOS GUARDADOS APARTE
 c.execute('''CREATE TABLE IF NOT EXISTS pesajes_guardados 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
@@ -154,7 +153,6 @@ with tab_calc:
             except sr.RequestError:
                 st.error("Error en el servicio de reconocimiento de voz.")
 
-    # --- LÓGICA INTELIGENTE DE INTERPRETACIÓN DE VOZ MEJORADA ---
     texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
     
     idx_sugerido = None
@@ -198,7 +196,6 @@ with tab_calc:
                     max_coincidencias = coincidencias
                     idx_sugerido = i
 
-    # --- RENDERIZADO DEL FORMULARIO ---
     col_mode1, col_mode2 = st.columns(2)
     with col_mode1:
         nuevo_art = st.toggle("Modo: Artículo NO listado", value=False)
@@ -270,14 +267,27 @@ with tab_calc:
 # --- TAB 2: AUDITORÍA ---
 with tab_historial:
     st.title("📋 Consolidación de Auditoría")
-    df = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     
-    if not df.empty:
+    # Cargar datos de ambas tablas
+    df_actual = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
+    df_guardados = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
+    
+    # Etiquetar los registros guardados para diferenciarlos en los reportes combinados
+    if not df_guardados.empty:
+        df_guardados_rep = df_guardados.copy()
+        df_guardados_rep['detalle_formula'] = "[GUARDADO] " + df_guardados_rep['detalle_formula'].astype(str)
+    else:
+        df_guardados_rep = pd.DataFrame(columns=df_actual.columns)
+        
+    # Combinar ambas tablas para la vista unificada de auditoría y exportaciones
+    df_combined = pd.concat([df_actual, df_guardados_rep], ignore_index=True)
+    
+    if not df_combined.empty:
         st.info("🎤 **Buscar Artículo por Voz:** Dicta el nombre del producto que quieres auditar.")
         audio_filtro_bytes = st.audio_input("Grabar voz para buscar", key="audio_filtro")
         texto_busqueda = ""
         idx_filtro_sugerido = None
-        opciones_filtro = sorted(df['articulo'].unique())
+        opciones_filtro = sorted(df_combined['articulo'].unique())
         
         if audio_filtro_bytes:
             recognizer_filtro = sr.Recognizer()
@@ -306,7 +316,8 @@ with tab_historial:
         stock_teorico = None
         
         if art_filtro:
-            df_art = df[df['articulo'] == art_filtro]
+            # Filtramos sobre df_combined para sumar tanto los nuevos como los guardados
+            df_art = df_combined[df_combined['articulo'] == art_filtro]
             total_real = truncar_dos_decimales(df_art['resultado_pue'].sum())
             
             st.subheader(f"Resultados de: {art_filtro}")
@@ -317,7 +328,7 @@ with tab_historial:
             st.divider()
             c_res1, c_res2, c_res3 = st.columns(3)
             with c_res1:
-                st.metric("TOTAL (PESAJE + PRECONTEO)", formato_estricto(total_real))
+                st.metric("TOTAL (SESIÓN + BÓVEDA)", formato_estricto(total_real))
             with c_res2:
                 stock_teorico = st.number_input("Valor en Sistema (Stock):", value=None, placeholder="Ingrese stock...")
             
@@ -343,7 +354,8 @@ with tab_historial:
         
         with col_export1:
             st.markdown("**1. Tarjetas para Recorte**")
-            df_impresion = df[['articulo', 'resultado_pue']].copy()
+            # Usamos df_combined para exportar TODO
+            df_impresion = df_combined[['articulo', 'resultado_pue']].copy()
             word_file = generar_word_tarjetas(df_impresion)
             
             st.download_button(
@@ -389,7 +401,8 @@ with tab_historial:
                     worksheet.write(5, col_num, data, format_header)
                     
                 row = 6
-                for index, row_data in df.iterrows():
+                # Usamos df_combined para exportar TODO
+                for index, row_data in df_combined.iterrows():
                     worksheet.write(row, 0, row_data['articulo'], format_data)
                     worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
                     worksheet.write(row, 2, row_data['detalle_formula'], format_center) 
@@ -418,9 +431,10 @@ with tab_historial:
             reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
             reporte_wa_texto += f"👤 *Elabora:* {elabora_in}\n"
             reporte_wa_texto += f"📅 *Fecha:* {datetime.now(pytz.timezone('America/Mexico_City')).strftime('%d/%m/%Y')}\n\n"
-            reporte_wa_texto += "📦 *REGISTROS:*\n"
+            reporte_wa_texto += "📦 *REGISTROS (Sesión + Guardados):*\n"
             
-            for index, row_data in df.iterrows():
+            # Usamos df_combined para exportar TODO
+            for index, row_data in df_combined.iterrows():
                 cantidad_exacta = formato_estricto(row_data['resultado_pue'])
                 reporte_wa_texto += f"▪️ *{row_data['articulo']}*\n"
                 reporte_wa_texto += f"   Cant: {cantidad_exacta} | Oper: {row_data['detalle_formula']}\n"
@@ -449,9 +463,10 @@ with tab_historial:
         with st.expander("🗑️ Administración de Base de Datos - Eliminar Registros", expanded=True):
             st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar.")
             
-            columnas_bloqueadas = df.columns.tolist() 
+            # La tabla de edición usa SOLO los datos de la sesión actual
+            columnas_bloqueadas = df_actual.columns.tolist() 
             edited_df = st.data_editor(
-                df,
+                df_actual,
                 use_container_width=True,
                 num_rows="dynamic",
                 hide_index=True,
@@ -460,7 +475,7 @@ with tab_historial:
             )
             
             if st.button("💾 Guardar Cambios en Tabla", use_container_width=True):
-                original_ids = set(df['id'])
+                original_ids = set(df_actual['id'])
                 current_ids = set(edited_df['id'])
                 ids_to_delete = original_ids - current_ids
                 
@@ -480,30 +495,33 @@ with tab_historial:
                 conn.commit()
                 st.rerun()
 
-        # --- NUEVA SECCIÓN DE DATOS PROTEGIDOS ---
+        # --- SECCIÓN DE DATOS PROTEGIDOS ---
         st.divider()
         with st.expander("🛡️ Guardar Aparte (Registros Protegidos)", expanded=False):
-            st.markdown("Selecciona registros de la tabla principal para guardarlos en una bóveda segura. Al **Limpiar toda la base de datos** de arriba, estos registros **no se borrarán**.")
+            st.markdown("Selecciona registros de la sesión actual para trasladarlos a la bóveda segura. **Estos funcionarán como pre-conteos y se sumarán automáticamente a tus nuevos pesajes.**")
             
-            opciones_proteger = df.apply(lambda x: f"ID {x['id']} | {x['articulo']} | {x['resultado_pue']} u.", axis=1).tolist()
-            seleccionados_para_proteger = st.multiselect("Selecciona los registros a guardar aparte:", opciones_proteger)
+            # Listar solo los registros que están en la sesión actual
+            opciones_proteger = df_actual.apply(lambda x: f"ID {x['id']} | {x['articulo']} | {x['resultado_pue']} u.", axis=1).tolist()
+            seleccionados_para_proteger = st.multiselect("Selecciona los registros a mover a la bóveda:", opciones_proteger)
             
-            if st.button("📥 Guardar seleccionados en la Bóveda"):
+            if st.button("📥 Mover seleccionados a la Bóveda"):
                 if seleccionados_para_proteger:
                     for sel in seleccionados_para_proteger:
                         id_val = sel.split(" | ")[0].replace("ID ", "")
+                        # 1. Insertar en la bóveda
                         c.execute("""INSERT INTO pesajes_guardados (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
                                      SELECT fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
                                      FROM pesajes_individuales WHERE id = ?""", (id_val,))
+                        # 2. Borrar de la tabla principal para evitar que se sumen doble
+                        c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (id_val,))
                     conn.commit()
-                    st.success(f"Se han guardado {len(seleccionados_para_proteger)} registros de forma segura.")
+                    st.success(f"Se han trasladado {len(seleccionados_para_proteger)} registros a la bóveda de pre-conteos de forma segura.")
                     st.rerun()
                 else:
                     st.warning("Selecciona al menos un registro de la lista.")
                     
             st.divider()
-            st.markdown("#### 🗃️ Registros Guardados Actualmente")
-            df_guardados = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
+            st.markdown("#### 🗃️ Pre-conteos Guardados Actualmente")
             
             if not df_guardados.empty:
                 edited_guardados = st.data_editor(
@@ -527,10 +545,10 @@ with tab_historial:
                         st.success(f"Se eliminaron {len(ids_to_delete_g)} registros guardados.")
                         st.rerun()
             else:
-                st.info("No hay registros guardados aparte en este momento.")
+                st.info("No hay pre-conteos guardados en la bóveda en este momento.")
 
     else:
-        st.info("No hay pesajes registrados aún.")
+        st.info("No hay pesajes ni pre-conteos registrados aún.")
 
 # --- AJUSTE DE TECLADO MÓVIL ---
 components.html(
