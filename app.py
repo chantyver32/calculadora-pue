@@ -49,6 +49,10 @@ c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales
 c.execute('''CREATE TABLE IF NOT EXISTS pesajes_guardados 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
              peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
+
+# NUEVA TABLA PARA GUARDAR EL RESUMEN DE STOCK Y DIFERENCIAS
+c.execute('''CREATE TABLE IF NOT EXISTS auditoria_stock 
+             (articulo TEXT PRIMARY KEY, total_real REAL, stock REAL, diferencia REAL)''')
 conn.commit()
 
 # --- FUNCIONES ---
@@ -223,8 +227,9 @@ with tab_calc:
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2, c3 = st.columns(3)
-                with c1: t_cont = st.checkbox("Contenedor (0.016)", value=t_cont_sugerido)
-                with c2: t_bis = st.checkbox("Bisagra (0.045)", value=t_bis_sugerido)
+                # TARAS ACTUALIZADAS
+                with c1: t_cont = st.checkbox("Contenedor (0.045)", value=t_cont_sugerido)
+                with c2: t_bis = st.checkbox("Bisagra (0.016)", value=t_bis_sugerido)
                 with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
@@ -240,7 +245,8 @@ with tab_calc:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                tara_total = (0.016 if t_cont else 0) + (0.045 if t_bis else 0) + tm
+                # CÁLCULO DE TARA ACTUALIZADO
+                tara_total = (0.045 if t_cont else 0) + (0.016 if t_bis else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
@@ -313,7 +319,6 @@ with tab_historial:
         art_filtro = st.selectbox("Seleccione el Artículo a Consultar:", opciones_filtro, index=idx_filtro_sugerido, placeholder="Seleccione para ver desglose...")
         
         msg_reporte = "" 
-        stock_teorico = None
         
         if art_filtro:
             # Filtramos sobre df_combined para sumar tanto los nuevos como los guardados
@@ -329,19 +334,31 @@ with tab_historial:
             c_res1, c_res2, c_res3 = st.columns(3)
             with c_res1:
                 st.metric("TOTAL (SESIÓN + BÓVEDA)", formato_estricto(total_real))
+            
+            # Buscar si ya hay un stock guardado para este artículo
+            c.execute("SELECT stock FROM auditoria_stock WHERE articulo=?", (art_filtro,))
+            row_stock = c.fetchone()
+            saved_stock = row_stock[0] if row_stock else None
+            
             with c_res2:
-                stock_teorico = st.number_input("Valor en Sistema (Stock):", value=None, placeholder="Ingrese stock...")
+                stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingrese stock y presione Enter")
             
             if stock_teorico is not None:
                 diferencia = truncar_dos_decimales(total_real - stock_teorico)
+                
+                # GUARDADO AUTOMÁTICO EN LA BASE DE DATOS AL PRESIONAR ENTER
+                c.execute("""INSERT OR REPLACE INTO auditoria_stock (articulo, total_real, stock, diferencia) 
+                             VALUES (?, ?, ?, ?)""", (art_filtro, total_real, stock_teorico, diferencia))
+                conn.commit()
+                
                 with c_res3:
                     st.metric("DIFERENCIA", formato_estricto(diferencia), delta=round(diferencia, 2), delta_color="inverse")
                 
                 desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art['detalle_formula'], df_art['resultado_pue'])])
-                msg_reporte = (f"*REPORTE DE AUDITORÍA PUE*\n"
+                msg_reporte = (f"*REPORTE DE AUDITORÍA INDIVIDUAL*\n"
                                f"------------------------------\n"
                                f"*Producto:* {art_filtro}\n"
-                               f"*Total Acumulado:* *{formato_estricto(total_real)}*\n"
+                               f"*Total Físico Acumulado:* *{formato_estricto(total_real)}*\n"
                                f"*Stock Sistema:* *{formato_estricto(stock_teorico)}*\n"
                                f"*Diferencia:* *{formato_estricto(diferencia)}*\n"
                                f"------------------------------\n"
@@ -355,7 +372,6 @@ with tab_historial:
         with col_export1:
             st.markdown("**1. Tarjetas para Recorte**")
             
-            # SOLO se imprimen las tarjetas de los PRE-CONTEOS (df_guardados)
             if not df_guardados.empty:
                 df_impresion = df_guardados[['articulo', 'resultado_pue']].copy()
                 word_file = generar_word_tarjetas(df_impresion)
@@ -405,7 +421,7 @@ with tab_historial:
                     worksheet.write(5, col_num, data, format_header)
                     
                 row = 6
-                # Usamos df_combined para exportar TODO en Excel
+                # Usamos df_combined para exportar el desglose detallado en Excel
                 for index, row_data in df_combined.iterrows():
                     worksheet.write(row, 0, row_data['articulo'], format_data)
                     worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
@@ -429,22 +445,27 @@ with tab_historial:
             )
 
         with col_export3:
-            st.markdown("**3. Generar Reporte**")
+            st.markdown("**3. Generar Reporte Total (WhatsApp)**")
             
-            reporte_wa_texto = f"📊 *REPORTE WHATSAPP - BAJA DE INSUMOS*\n"
+            # REPORTE TOTAL CON LAS SUMATORIAS MENOS EL STOCK
+            df_auditoria = pd.read_sql("SELECT * FROM auditoria_stock", conn)
+            
+            reporte_wa_texto = f"📊 *BAJA DE INSUMOS*\n"
             reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
-            reporte_wa_texto += f"👤 *Elabora:* {elabora_in}\n"
-            reporte_wa_texto += f"📅 *Fecha:* {datetime.now(pytz.timezone('America/Mexico_City')).strftime('%d/%m/%Y')}\n\n"
-            reporte_wa_texto += "📦 *REGISTROS (Sesión + Guardados):*\n"
+            reporte_wa_texto += f"👤 *Vendedor:* {elabora_in}\n"
+            reporte_wa_texto += f"📅 *Fecha:* {datetime.now(pytz.timezone('America/Mexico_City')).strftime('%d/%m/%Y %H:%M')}\n\n"
+            reporte_wa_texto += "📦 *RESUMEN DE DIFERENCIAS:*\n"
             
-            # Usamos df_combined para exportar TODO en WhatsApp
-            for index, row_data in df_combined.iterrows():
-                cantidad_exacta = formato_estricto(row_data['resultado_pue'])
-                reporte_wa_texto += f"▪️ *{row_data['articulo']}*\n"
-                # AQUI AGREGAMOS LOS ASTERISCOS PARA NEGRITAS
-                reporte_wa_texto += f"   Cant: *{cantidad_exacta}* | Oper: {row_data['detalle_formula']}\n"
+            if not df_auditoria.empty:
+                for index, row_aud in df_auditoria.iterrows():
+                    reporte_wa_texto += f"▪️ *{row_aud['articulo']}*\n"
+                    reporte_wa_texto += f"   Total Físico: {formato_estricto(row_aud['total_real'])} u.\n"
+                    reporte_wa_texto += f"   Stock Sistema: {formato_estricto(row_aud['stock'])} u.\n"
+                    reporte_wa_texto += f"   Diferencia: *{formato_estricto(row_aud['diferencia'])}*\n\n"
+            else:
+                reporte_wa_texto += "No se han calculado stocks en esta sesión.\n"
                 
-            st.info("El Reporte WhatsApp está listo. Envía desde los botones de abajo.")
+            st.info("El Reporte Total está listo con las sumatorias. Envía desde los botones de abajo.")
 
         st.divider()
         
@@ -453,22 +474,21 @@ with tab_historial:
         
         col_wa1, col_wa2 = st.columns(2)
         with col_wa1:
-            if art_filtro and stock_teorico is not None:
+            if art_filtro and msg_reporte:
                 url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_reporte)}"
-                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE DE ESTE ARTÍCULO</a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE INDIVIDUAL</a>', unsafe_allow_html=True)
             else:
-                st.info("📌 Selecciona un artículo e ingresa el stock arriba para habilitar el reporte de auditoría.")
+                st.info("📌 Selecciona un artículo para enviar su reporte individual.")
                 
         with col_wa2:
             url_wa_reporte = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(reporte_wa_texto)}"
-            st.markdown(f'<a href="{url_wa_reporte}" target="_blank" class="btn-wa" style="margin: 0px;">📲 ENVIAR REPORTE WHATSAPP DE TODO</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{url_wa_reporte}" target="_blank" class="btn-wa" style="margin: 0px;">📲 ENVIAR REPORTE TOTAL (LISTA DIFERENCIAS)</a>', unsafe_allow_html=True)
             
         st.divider()
         
         with st.expander("🗑️ Administración de Base de Datos - Eliminar Registros", expanded=True):
             st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar.")
             
-            # La tabla de edición usa SOLO los datos de la sesión actual
             columnas_bloqueadas = df_actual.columns.tolist() 
             edited_df = st.data_editor(
                 df_actual,
@@ -497,6 +517,7 @@ with tab_historial:
             
             if st.button("🚨 LIMPIAR TODA LA BASE DE DATOS", type="primary"):
                 c.execute("DELETE FROM pesajes_individuales")
+                c.execute("DELETE FROM auditoria_stock")  # Esto limpiará también el reporte total generado
                 conn.commit()
                 st.rerun()
 
@@ -505,7 +526,6 @@ with tab_historial:
         with st.expander("🛡️ Guardar Aparte (Registros Protegidos)", expanded=False):
             st.markdown("Selecciona registros de la sesión actual para trasladarlos a la bóveda segura. **Estos funcionarán como pre-conteos y se sumarán automáticamente a tus nuevos pesajes.**")
             
-            # Listar solo los registros que están en la sesión actual
             opciones_proteger = df_actual.apply(lambda x: f"ID {x['id']} | {x['articulo']} | {x['resultado_pue']} u.", axis=1).tolist()
             seleccionados_para_proteger = st.multiselect("Selecciona los registros a mover a la bóveda:", opciones_proteger)
             
@@ -513,11 +533,9 @@ with tab_historial:
                 if seleccionados_para_proteger:
                     for sel in seleccionados_para_proteger:
                         id_val = sel.split(" | ")[0].replace("ID ", "")
-                        # 1. Insertar en la bóveda
                         c.execute("""INSERT INTO pesajes_guardados (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
                                      SELECT fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
                                      FROM pesajes_individuales WHERE id = ?""", (id_val,))
-                        # 2. Borrar de la tabla principal para evitar que se sumen doble
                         c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (id_val,))
                     conn.commit()
                     st.success(f"Se han trasladado {len(seleccionados_para_proteger)} registros a la bóveda de pre-conteos de forma segura.")
