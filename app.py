@@ -354,17 +354,21 @@ with tab_historial:
         
         with col_export1:
             st.markdown("**1. Tarjetas para Recorte**")
-            # Usamos df_combined para exportar TODO
-            df_impresion = df_combined[['articulo', 'resultado_pue']].copy()
-            word_file = generar_word_tarjetas(df_impresion)
             
-            st.download_button(
-                label="📄 Descargar Tarjetas en Word",
-                data=word_file,
-                file_name="Tarjetas_Recortables.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True
-            )
+            # SOLO se imprimen las tarjetas de los PRE-CONTEOS (df_guardados)
+            if not df_guardados.empty:
+                df_impresion = df_guardados[['articulo', 'resultado_pue']].copy()
+                word_file = generar_word_tarjetas(df_impresion)
+                
+                st.download_button(
+                    label="📄 Descargar Tarjetas en Word (Pre-conteos)",
+                    data=word_file,
+                    file_name="Tarjetas_Recortables_Preconteos.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+            else:
+                st.info("No hay pre-conteos guardados en la bóveda para generar tarjetas.")
             
         with col_export2:
             st.markdown("**2. Reporte Excel Oficial**")
@@ -401,7 +405,7 @@ with tab_historial:
                     worksheet.write(5, col_num, data, format_header)
                     
                 row = 6
-                # Usamos df_combined para exportar TODO
+                # Usamos df_combined para exportar TODO en Excel
                 for index, row_data in df_combined.iterrows():
                     worksheet.write(row, 0, row_data['articulo'], format_data)
                     worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
@@ -433,7 +437,7 @@ with tab_historial:
             reporte_wa_texto += f"📅 *Fecha:* {datetime.now(pytz.timezone('America/Mexico_City')).strftime('%d/%m/%Y')}\n\n"
             reporte_wa_texto += "📦 *REGISTROS (Sesión + Guardados):*\n"
             
-            # Usamos df_combined para exportar TODO
+            # Usamos df_combined para exportar TODO en WhatsApp
             for index, row_data in df_combined.iterrows():
                 cantidad_exacta = formato_estricto(row_data['resultado_pue'])
                 reporte_wa_texto += f"▪️ *{row_data['articulo']}*\n"
