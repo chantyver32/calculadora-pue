@@ -227,7 +227,6 @@ with tab_calc:
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2, c3 = st.columns(3)
-                # TARAS ACTUALIZADAS
                 with c1: t_cont = st.checkbox("Contenedor (0.045)", value=t_cont_sugerido)
                 with c2: t_bis = st.checkbox("Bisagra (0.016)", value=t_bis_sugerido)
                 with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
@@ -245,7 +244,6 @@ with tab_calc:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                # CÁLCULO DE TARA ACTUALIZADO
                 tara_total = (0.045 if t_cont else 0) + (0.016 if t_bis else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
@@ -421,7 +419,6 @@ with tab_historial:
                     worksheet.write(5, col_num, data, format_header)
                     
                 row = 6
-                # Usamos df_combined para exportar el desglose detallado en Excel
                 for index, row_data in df_combined.iterrows():
                     worksheet.write(row, 0, row_data['articulo'], format_data)
                     worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
@@ -447,7 +444,6 @@ with tab_historial:
         with col_export3:
             st.markdown("**3. Generar Reporte Total (WhatsApp)**")
             
-            # REPORTE TOTAL CON LAS SUMATORIAS MENOS EL STOCK
             df_auditoria = pd.read_sql("SELECT * FROM auditoria_stock", conn)
             
             reporte_wa_texto = f"📊 *BAJA DE INSUMOS*\n"
@@ -458,9 +454,21 @@ with tab_historial:
             
             if not df_auditoria.empty:
                 for index, row_aud in df_auditoria.iterrows():
-                    reporte_wa_texto += f"▪️ *{row_aud['articulo']}*\n"
-                    reporte_wa_texto += f"   Total Físico: {formato_estricto(row_aud['total_real'])} u.\n"
-                    reporte_wa_texto += f"   Stock Sistema: {formato_estricto(row_aud['stock'])} u.\n"
+                    art_actual = row_aud['articulo']
+                    
+                    # Filtramos df_combined para sacar todos los valores individuales que conforman el total físico
+                    df_art_desglose = df_combined[df_combined['articulo'] == art_actual]
+                    sumandos = [formato_estricto(val) for val in df_art_desglose['resultado_pue']]
+                    
+                    # Creamos el desglose estilo 20+34=54
+                    if len(sumandos) > 1:
+                        desglose_str = f"{' + '.join(sumandos)} = {formato_estricto(row_aud['total_real'])}"
+                    else:
+                        desglose_str = formato_estricto(row_aud['total_real'])
+
+                    reporte_wa_texto += f"▪️ *{art_actual}*\n"
+                    reporte_wa_texto += f"   Total Físico: {desglose_str}\n"
+                    reporte_wa_texto += f"   Stock Sistema: {formato_estricto(row_aud['stock'])}\n"
                     reporte_wa_texto += f"   Diferencia: *{formato_estricto(row_aud['diferencia'])}*\n\n"
             else:
                 reporte_wa_texto += "No se han calculado stocks en esta sesión.\n"
@@ -517,7 +525,7 @@ with tab_historial:
             
             if st.button("🚨 LIMPIAR TODA LA BASE DE DATOS", type="primary"):
                 c.execute("DELETE FROM pesajes_individuales")
-                c.execute("DELETE FROM auditoria_stock")  # Esto limpiará también el reporte total generado
+                c.execute("DELETE FROM auditoria_stock")  
                 conn.commit()
                 st.rerun()
 
