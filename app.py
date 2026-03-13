@@ -17,7 +17,7 @@ import streamlit.components.v1 as components
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
 
-# Estilos CSS
+# Estilos CSS (Se agregó CSS para expandir el área del botón de audio)
 st.markdown("""
     <style>
     .main { background-color: #f5f7f9; }
@@ -37,6 +37,18 @@ st.markdown("""
     }
     .btn-wa:hover { background-color: #128C7E; }
     div[data-testid="stMetricValue"] { font-size: 28px; color: #1f77b4; }
+    
+    /* Expande el botón del micrófono para que sea clickeable en toda su área */
+    div[data-testid="stAudioInput"] button {
+        width: 100% !important;
+        height: 80px !important;
+        border-radius: 12px !important;
+        background-color: #e6f2ff !important;
+        border: 2px dashed #1f77b4 !important;
+    }
+    div[data-testid="stAudioInput"] button:hover {
+        background-color: #cce5ff !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -169,7 +181,7 @@ with tab_calc:
     st.title("⚖️ Registro de Pesaje")
     
     st.info("🎤 **Ingreso por Voz:** Dicta algo como 0.620 kg de capacillo chino en contenedor.")
-    audio_bytes = st.audio_input("Grabar voz para registro", key="audio_reg")
+    audio_bytes = st.audio_input("Toca el recuadro para grabar voz", key="audio_reg")
     texto_reconocido = ""
     
     if audio_bytes:
@@ -179,6 +191,18 @@ with tab_calc:
             try:
                 texto_reconocido = recognizer.recognize_google(audio_data, language="es-MX")
                 st.success(f"**Escuchado:** {texto_reconocido}")
+                
+                # --- SCRIPT DE LECTURA EN VOZ ALTA ---
+                js_tts = f"""
+                <script>
+                    const utterance = new SpeechSynthesisUtterance("{texto_reconocido}");
+                    utterance.lang = 'es-MX';
+                    utterance.rate = 1.0;
+                    window.speechSynthesis.speak(utterance);
+                </script>
+                """
+                components.html(js_tts, height=0)
+                
             except sr.UnknownValueError:
                 st.error("No se pudo entender el audio.")
             except sr.RequestError:
@@ -315,7 +339,7 @@ with tab_historial:
     
     if not df_combined.empty:
         st.info("🎤 **Buscar Artículo por Voz:** Dicta el nombre del producto que quieres auditar.")
-        audio_filtro_bytes = st.audio_input("Grabar voz para buscar", key="audio_filtro")
+        audio_filtro_bytes = st.audio_input("Toca el recuadro para grabar voz de búsqueda", key="audio_filtro")
         texto_busqueda = ""
         idx_filtro_sugerido = None
         opciones_filtro = sorted(df_combined['articulo'].unique())
@@ -327,6 +351,17 @@ with tab_historial:
                 try:
                     texto_busqueda = recognizer_filtro.recognize_google(audio_data_filtro, language="es-MX").upper()
                     st.success(f"**Buscando:** {texto_busqueda}")
+                    
+                    # --- SCRIPT DE LECTURA EN VOZ ALTA (Búsqueda) ---
+                    js_tts_busqueda = f"""
+                    <script>
+                        const utterance = new SpeechSynthesisUtterance("Buscando: {texto_busqueda}");
+                        utterance.lang = 'es-MX';
+                        window.speechSynthesis.speak(utterance);
+                    </script>
+                    """
+                    components.html(js_tts_busqueda, height=0)
+                    
                 except sr.UnknownValueError:
                     st.error("No se pudo entender el audio de búsqueda.")
                 except sr.RequestError:
