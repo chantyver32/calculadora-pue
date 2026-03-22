@@ -67,22 +67,8 @@ with st.sidebar:
     numero_wa = st.selectbox("📱 Número WhatsApp", opciones_wa)
     
     st.divider()
-    st.markdown("### 💾 Respaldo de Base de Datos")
-    st.info("Guarda o restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos.")
-    
-    # Exportar Bóveda
-    df_boveda_full = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
-    if not df_boveda_full.empty:
-        csv_boveda = df_boveda_full.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Descargar Respaldo CSV", 
-            data=csv_boveda, 
-            file_name="respaldo_boveda_champlitte.csv", 
-            mime="text/csv", 
-            use_container_width=True
-        )
-    else:
-        st.download_button("⬇️ Descargar Respaldo CSV", data="", file_name="respaldo.csv", disabled=True, use_container_width=True)
+    st.markdown("### 💾 Recuperar Bóveda")
+    st.info("Restaura tus preconteos mediante un archivo CSV previamente guardado.")
 
     # Importar Bóveda
     with st.form("form_restaurar_boveda"):
@@ -553,8 +539,18 @@ with tab_historial:
                     st.warning("Selecciona al menos un registro de la lista.")
             
             st.divider()
-            st.markdown("#### 🗃️ Pre-conteos Guardados Actualmente")
+            st.markdown("#### 🗃️ Pre-conteos Guardados Actualmente (Bóveda)")
             if not df_guardados.empty:
+                # BOTÓN DE DESCARGA DIRECTO EN LA SECCIÓN DE LA BÓVEDA
+                csv_boveda_export = df_guardados.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Descargar Bóveda a CSV", 
+                    data=csv_boveda_export, 
+                    file_name="respaldo_boveda_champlitte.csv", 
+                    mime="text/csv", 
+                    use_container_width=True
+                )
+                
                 edited_guardados = st.data_editor(df_guardados, use_container_width=True, num_rows="dynamic", hide_index=True, disabled=df_guardados.columns.tolist(), key="editor_db_guardados")
                 if st.button("💾 Eliminar filas borradas de la Bóveda", use_container_width=True):
                     original_ids_g = set(df_guardados['id'])
