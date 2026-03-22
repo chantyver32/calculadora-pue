@@ -67,9 +67,9 @@ with st.sidebar:
     numero_wa = st.selectbox("📱 Número WhatsApp", opciones_wa)
     
     st.divider()
-    st.markdown("### 💾 Recuperar Bóveda")
-    st.info("Restaura tus preconteos mediante un archivo CSV previamente guardado.")
-
+    st.markdown("### 💾 Respaldo de Base de Datos")
+    st.info("Guarda o restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos.")
+    
     # Importar Bóveda
     with st.form("form_restaurar_boveda"):
         uploaded_csv = st.file_uploader("⬆️ Subir Respaldo CSV", type=["csv"])
@@ -539,18 +539,8 @@ with tab_historial:
                     st.warning("Selecciona al menos un registro de la lista.")
             
             st.divider()
-            st.markdown("#### 🗃️ Pre-conteos Guardados Actualmente (Bóveda)")
+            st.markdown("#### 🗃️ Pre-conteos Guardados Actualmente")
             if not df_guardados.empty:
-                # BOTÓN DE DESCARGA DIRECTO EN LA SECCIÓN DE LA BÓVEDA
-                csv_boveda_export = df_guardados.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Descargar Bóveda a CSV", 
-                    data=csv_boveda_export, 
-                    file_name="respaldo_boveda_champlitte.csv", 
-                    mime="text/csv", 
-                    use_container_width=True
-                )
-                
                 edited_guardados = st.data_editor(df_guardados, use_container_width=True, num_rows="dynamic", hide_index=True, disabled=df_guardados.columns.tolist(), key="editor_db_guardados")
                 if st.button("💾 Eliminar filas borradas de la Bóveda", use_container_width=True):
                     original_ids_g = set(df_guardados['id'])
