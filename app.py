@@ -68,23 +68,9 @@ with st.sidebar:
     
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
-    st.info("Guarda o restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos.")
-    
-    # Exportar Bóveda
-    df_boveda_full = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
-    if not df_boveda_full.empty:
-        csv_boveda = df_boveda_full.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Descargar Respaldo CSV", 
-            data=csv_boveda, 
-            file_name="respaldo_boveda_champlitte.csv", 
-            mime="text/csv", 
-            use_container_width=True
-        )
-    else:
-        st.download_button("⬇️ Descargar Respaldo CSV", data="", file_name="respaldo.csv", disabled=True, use_container_width=True)
+    st.info("Restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos. Puedes descargar el CSV directamente desde la tabla de la bóveda.")
 
-    # Importar Bóveda (SOLUCIÓN AL ERROR DE CARGA)
+    # Importar Bóveda
     with st.form("form_restaurar_boveda"):
         uploaded_csv = st.file_uploader("⬆️ Subir Respaldo CSV", type=["csv"])
         btn_restaurar = st.form_submit_button("🔄 Restaurar Preconteos", use_container_width=True)
