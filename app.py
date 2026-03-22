@@ -59,12 +59,15 @@ conn.commit()
 with st.sidebar:
     st.markdown("### ⚙️ Configuración")
     
-    opciones_wa = [
-        "522283530069",
-        "522281111111", 
-        "522280000000"  
-    ]
-    numero_wa = st.selectbox("📱 Número WhatsApp", opciones_wa)
+    # Opción 1: Lista desplegable para números de WhatsApp
+    opciones_wa = {
+        "Contacto Principal": "522283530069",
+        "Contacto Secundario": "521234567890", # Cambia por el número real
+        "Contacto 3": "520987654321"         # Cambia por el número real
+    }
+    seleccion_wa = st.selectbox("📇 Selecciona el WhatsApp destino", list(opciones_wa.keys()))
+    # Guardamos el número seleccionado en la variable original para no romper el resto del código
+    numero_wa = opciones_wa[seleccion_wa] 
     
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
@@ -164,7 +167,7 @@ productos = {
     "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
     "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364, "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
     "CAJA TUTIS POR PZA A": 0.048, "CAPACILLO CHINO POR PZA B": 0.00104, "CAPACILLO ROJO #72 POR PZA A": 0.000436,
-    "CONT BISAG P/5-6 TUTIS POR PZA A": 0.014, "CUCHARA MED DESCH POR PZA A": 0.00165,
+    "CONT BISAG P/5-6 TUTIS POR PZA A": 0.045, "CUCHARA MED DESCH POR PZA A": 0.00165,
     "ETIQUETA CHAMPLITTE CHICA 4 X 4 POR PZA B": 0.000328, "ETIQUETA CHAMPLITTE MEDIANA 6 X 6 POR PZA B": 0.00057,
     "EMPLAYE GRANDE ROLLO POR PZA T": 1.174, "PAPEL ALUMINIO POR PZA T": 1.342, "SERVILLETA PQ/500 HJ POR PZA A": 0.001192,
     "COFIA POR PQ/100 PZAS A": 0.238, "GUANTES TRANSP POLIURETANO POR PQ/100 PZAS A": 0.086,
@@ -291,7 +294,7 @@ with tab_calc:
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2 = st.columns(2)
-                with c1: t_cont = st.checkbox("Contenedor (0.045)", value=t_cont_sugerido)
+                with c1: t_cont = st.checkbox("Contenedor (0.016)", value=t_cont_sugerido)
                 with c2: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
@@ -307,7 +310,7 @@ with tab_calc:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                tara_total = (0.045 if t_cont else 0) + tm
+                tara_total = (0.016 if t_cont else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
