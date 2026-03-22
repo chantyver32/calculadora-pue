@@ -11,11 +11,14 @@ from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
-import re  
+import re
 import streamlit.components.v1 as components
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
+
+if 'ultimo_articulo' not in st.session_state:
+    st.session_state['ultimo_articulo'] = None
 
 # Estilos CSS
 st.markdown("""
@@ -59,7 +62,7 @@ conn.commit()
 with st.sidebar:
     st.markdown("### ⚙️ Configuración")
     
-    # Lista de números de WhatsApp (puedes agregar o modificar los que necesites)
+    # Lista de números de WhatsApp
     opciones_wa = [
         "522283530069",
         "522281111111", 
@@ -70,7 +73,6 @@ with st.sidebar:
     with st.expander("🚨 Zona de Peligro", expanded=True):
         confirmar_borrado = st.checkbox("Confirmar que deseo borrar todo")
         
-        # Comportamiento exacto de las imágenes
         if st.button("⚠️ EJECUTAR RESET TOTAL", use_container_width=True):
             if not confirmar_borrado:
                 st.error("Debes confirmar primero")
@@ -79,8 +81,42 @@ with st.sidebar:
                 c.execute("DELETE FROM auditoria_stock")  
                 conn.commit()
                 st.success("✅ Base de datos limpiada por completo")
-                time.sleep(1.5) # Pausa breve para que veas el mensaje verde antes de recargar
+                time.sleep(1.5) 
                 st.rerun()
+                
+    st.divider()
+    
+    # --- NUEVO: SISTEMA DE RESPALDO DE BÓVEDA ---
+    with st.expander("💾 Respaldo de Preconteos (Bóveda)", expanded=False):
+        st.markdown("Guarda tus preconteos fijos en un archivo para no perderlos, o súbelos si la base de datos se reinició.")
+        
+        # Opción Descargar
+        df_boveda = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
+        if not df_boveda.empty:
+            csv_boveda = df_boveda.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Descargar Respaldo (CSV)", 
+                data=csv_boveda, 
+                file_name="respaldo_preconteos.csv", 
+                mime="text/csv", 
+                use_container_width=True
+            )
+        else:
+            st.info("La bóveda está vacía.")
+
+        # Opción Cargar
+        st.divider()
+        uploaded_file = st.file_uploader("⬆️ Subir Respaldo (CSV)", type=['csv'])
+        if uploaded_file is not None:
+            if st.button("Restaurar Preconteos", use_container_width=True):
+                try:
+                    df_upload = pd.read_csv(uploaded_file)
+                    df_upload.to_sql("pesajes_guardados", conn, if_exists="append", index=False)
+                    st.success("✅ Preconteos restaurados con éxito.")
+                    time.sleep(1.5)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al restaurar: {e}")
 
 # --- FUNCIONES ---
 def truncar_dos_decimales(valor):
@@ -302,10 +338,67 @@ with tab_calc:
                        tara_total if not modo_preconteo else 0, pue_final if not modo_preconteo else 0, 
                        resultado, formula))
             conn.commit()
+            st.session_state['ultimo_articulo'] = art_sel # Guardamos en memoria el artículo recién pesadp
             st.balloons()
             st.success(f"✅ Registrado con éxito: {formato_estricto(resultado)} de {art_sel}")
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
+
+    # --- NUEVO: VISTA RÁPIDA DE STOCK Y PESAJES EN LA MISMA PESTAÑA ---
+    st.divider()
+    st.subheader("🔍 Desglose y Stock Rápido")
+    st.info("Consulta los pesajes realizados del producto actual y descuenta su stock al instante sin cambiar de pestaña.")
+    
+    # Intentar autoseleccionar el último artículo guardado o el sugerido por voz
+    idx_rapido = 0
+    if st.session_state['ultimo_articulo'] in opciones:
+        idx_rapido = opciones.index(st.session_state['ultimo_articulo'])
+    elif idx_sugerido is not None:
+        idx_rapido = idx_sugerido
+
+    art_rapido = st.selectbox("Seleccione el artículo para revisar su progreso:", opciones, index=idx_rapido, key="sel_rapido")
+
+    if art_rapido:
+        # Extraer datos específicos para este artículo
+        df_actual_q = pd.read_sql("SELECT * FROM pesajes_individuales WHERE articulo=?", conn, params=(art_rapido,))
+        df_guardados_q = pd.read_sql("SELECT * FROM pesajes_guardados WHERE articulo=?", conn, params=(art_rapido,))
+
+        if not df_guardados_q.empty:
+            df_guardados_q['detalle_formula'] = "[GUARDADO] " + df_guardados_q['detalle_formula'].astype(str)
+
+        df_combined_q = pd.concat([df_actual_q, df_guardados_q], ignore_index=True)
+
+        if not df_combined_q.empty:
+            total_real_q = truncar_dos_decimales(df_combined_q['resultado_pue'].sum())
+            
+            # Mostrar tabla de pesajes
+            st.table(df_combined_q[['fecha_hora', 'peso_bruto', 'tara', 'resultado_pue']].rename(
+                columns={'fecha_hora': 'Fecha', 'peso_bruto': 'P. Bruto', 'tara': 'Tara Total', 'resultado_pue': 'Cantidad'}
+            ))
+
+            c_q1, c_q2, c_q3 = st.columns(3)
+            with c_q1: 
+                st.metric("TOTAL ACUMULADO", formato_estricto(total_real_q))
+
+            # Consultar si ya hay stock guardado
+            c.execute("SELECT stock FROM auditoria_stock WHERE articulo=?", (art_rapido,))
+            row_stock_q = c.fetchone()
+            saved_stock_q = row_stock_q[0] if row_stock_q else None
+
+            with c_q2:
+                stock_teorico_q = st.number_input("Valor en Sistema (Stock):", value=saved_stock_q, key=f"stock_rapido_{art_rapido}", placeholder="Escribe el stock y presiona Enter")
+
+            # Cálculo y guardado automático
+            if stock_teorico_q is not None:
+                diferencia_q = truncar_dos_decimales(total_real_q - stock_teorico_q)
+                c.execute("""INSERT OR REPLACE INTO auditoria_stock (articulo, total_real, stock, diferencia) 
+                             VALUES (?, ?, ?, ?)""", (art_rapido, total_real_q, stock_teorico_q, diferencia_q))
+                conn.commit()
+                with c_q3: 
+                    st.metric("DIFERENCIA", formato_estricto(diferencia_q), delta=round(diferencia_q, 2), delta_color="inverse")
+        else:
+            st.info(f"Aún no hay pesajes registrados en esta sesión o bóveda para: {art_rapido}")
+
 
 # --- TAB 2: AUDITORÍA ---
 with tab_historial:
