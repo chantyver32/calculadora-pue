@@ -68,7 +68,21 @@ with st.sidebar:
     
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
-    st.info("Restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos. Puedes descargar el CSV directamente desde la tabla de la bóveda.")
+    st.info("Guarda o restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos.")
+    
+    # Exportar Bóveda
+    df_boveda_full = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
+    if not df_boveda_full.empty:
+        csv_boveda = df_boveda_full.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Descargar Respaldo CSV", 
+            data=csv_boveda, 
+            file_name="respaldo_boveda_champlitte.csv", 
+            mime="text/csv", 
+            use_container_width=True
+        )
+    else:
+        st.download_button("⬇️ Descargar Respaldo CSV", data="", file_name="respaldo.csv", disabled=True, use_container_width=True)
 
     # Importar Bóveda
     with st.form("form_restaurar_boveda"):
@@ -225,14 +239,12 @@ with tab_calc:
     peso_sugerido = None
     pue_sugerido = None
     t_cont_sugerido = False
-    t_bis_sugerido = False
     nombre_limpio_sugerido = ""
     
     opciones = sorted(productos.keys())
     
     if texto_filtro:
         if "CONTENEDOR" in texto_filtro: t_cont_sugerido = True
-        if "BISAGRA" in texto_filtro: t_bis_sugerido = True
         
         match_pue = re.search(r'(?:PESO UNITARIO|UNITARIO|PUE|ESTÁNDAR|ESTANDAR)[^\d]*(\d+(?:[.,]\d+)?)', texto_filtro)
         if match_pue:
@@ -289,10 +301,9 @@ with tab_calc:
         else:
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
-                c1, c2, c3 = st.columns(3)
-                with c1: t_cont = st.checkbox("Contenedor (0.016)", value=t_cont_sugerido)
-                with c2: t_bis = st.checkbox("Bisagra (0.045)", value=t_bis_sugerido)
-                with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
+                c1, c2 = st.columns(2)
+                with c1: t_cont = st.checkbox("Contenedor (0.045)", value=t_cont_sugerido)
+                with c2: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
 
@@ -307,7 +318,7 @@ with tab_calc:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                tara_total = (0.016 if t_cont else 0) + (0.045 if t_bis else 0) + tm
+                tara_total = (0.045 if t_cont else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
