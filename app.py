@@ -192,32 +192,35 @@ tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Repo
 with tab_calc:
     st.title("⚖️ Registro y Control de Stock")
     
-    st.info("🎤 **Ingreso por Voz:** Dicta algo como 0.620 kg de capacillo chino en contenedor.")
-    audio_bytes = st.audio_input("Grabar voz para registro", key="audio_reg")
     texto_reconocido = ""
     
-    if audio_bytes:
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(audio_bytes) as source:
-            audio_data = recognizer.record(source)
-            try:
-                texto_reconocido = recognizer.recognize_google(audio_data, language="es-MX")
-                st.success(f"**Escuchado:** {texto_reconocido}")
-                
-                js_tts = f"""
-                <script>
-                    const utterance = new SpeechSynthesisUtterance("{texto_reconocido}");
-                    utterance.lang = 'es-MX';
-                    utterance.rate = 1.0;
-                    window.speechSynthesis.speak(utterance);
-                </script>
-                """
-                components.html(js_tts, height=0)
-                
-            except sr.UnknownValueError:
-                st.error("No se pudo entender el audio.")
-            except sr.RequestError:
-                st.error("Error en el servicio de reconocimiento de voz.")
+    # MODIFICACIÓN: Desplegable para el ingreso por voz (cerrado por defecto)
+    with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
+        st.info("Dicta algo como: 0.620 kg de capacillo chino en contenedor.")
+        audio_bytes = st.audio_input("Grabar voz para registro", key="audio_reg")
+        
+        if audio_bytes:
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(audio_bytes) as source:
+                audio_data = recognizer.record(source)
+                try:
+                    texto_reconocido = recognizer.recognize_google(audio_data, language="es-MX")
+                    st.success(f"**Escuchado:** {texto_reconocido}")
+                    
+                    js_tts = f"""
+                    <script>
+                        const utterance = new SpeechSynthesisUtterance("{texto_reconocido}");
+                        utterance.lang = 'es-MX';
+                        utterance.rate = 1.0;
+                        window.speechSynthesis.speak(utterance);
+                    </script>
+                    """
+                    components.html(js_tts, height=0)
+                    
+                except sr.UnknownValueError:
+                    st.error("No se pudo entender el audio.")
+                except sr.RequestError:
+                    st.error("Error en el servicio de reconocimiento de voz.")
 
     texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
     
