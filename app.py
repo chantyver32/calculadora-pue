@@ -11,7 +11,7 @@ from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
-import re
+import re  
 import streamlit.components.v1 as components
 
 # 1. CONFIGURACIÓN Y ESTADO
@@ -66,6 +66,46 @@ with st.sidebar:
     ]
     numero_wa = st.selectbox("📱 Número WhatsApp", opciones_wa)
     
+    st.divider()
+    st.markdown("### 💾 Respaldo de Base de Datos")
+    st.info("Guarda o restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos.")
+    
+    # Exportar Bóveda
+    df_boveda_full = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
+    if not df_boveda_full.empty:
+        csv_boveda = df_boveda_full.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Descargar Respaldo CSV", 
+            data=csv_boveda, 
+            file_name="respaldo_boveda_champlitte.csv", 
+            mime="text/csv", 
+            use_container_width=True
+        )
+    else:
+        st.download_button("⬇️ Descargar Respaldo CSV", data="", file_name="respaldo.csv", disabled=True, use_container_width=True)
+
+    # Importar Bóveda (SOLUCIÓN AL ERROR DE CARGA)
+    with st.form("form_restaurar_boveda"):
+        uploaded_csv = st.file_uploader("⬆️ Subir Respaldo CSV", type=["csv"])
+        btn_restaurar = st.form_submit_button("🔄 Restaurar Preconteos", use_container_width=True)
+        
+        if btn_restaurar:
+            if uploaded_csv is not None:
+                try:
+                    df_upload = pd.read_csv(uploaded_csv)
+                    # Eliminamos el ID si existe para que no choque con la base de datos
+                    if 'id' in df_upload.columns:
+                        df_upload = df_upload.drop(columns=['id'])
+                    
+                    df_upload.to_sql("pesajes_guardados", conn, if_exists="append", index=False)
+                    st.success("✅ Respaldo restaurado con éxito")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al restaurar: {e}")
+            else:
+                st.warning("⚠️ Primero selecciona un archivo CSV.")
+
     st.divider()
     with st.expander("🚨 Zona de Peligro", expanded=False):
         confirmar_borrado = st.checkbox("Confirmar que deseo borrar todo")
@@ -364,7 +404,7 @@ with tab_calc:
 
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
-    st.title("🖨️ Exportación y Bóveda")
+    st.title("🖨️ Exportación y Base de Datos")
     
     df_actual = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     df_guardados = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
@@ -496,12 +536,8 @@ with tab_historial:
                 else:
                     st.info("No detecté ninguna fila eliminada para guardar.")
 
-        # --- GESTIÓN EXCLUSIVA DE BÓVEDA ---
-        st.divider()
-        st.subheader("🗃️ Gestión de Bóveda (Pre-conteos)")
-        
-        with st.expander("🛡️ Trasladar de Sesión Actual a Bóveda", expanded=False):
-            st.markdown("Mueve registros de la sesión actual a la bóveda segura para que se conviertan en pre-conteos fijos.")
+        with st.expander("🛡️ Trasladar a Bóveda (Preconteos Permanentes)", expanded=False):
+            st.markdown("Mueve registros de la sesión actual a la bóveda segura.")
             opciones_proteger = df_actual.apply(lambda x: f"ID {x['id']} | {x['articulo']} | {x['resultado_pue']} u.", axis=1).tolist()
             seleccionados_para_proteger = st.multiselect("Selecciona los registros a mover a la bóveda:", opciones_proteger)
             
@@ -518,61 +554,25 @@ with tab_historial:
                     st.rerun()
                 else:
                     st.warning("Selecciona al menos un registro de la lista.")
-                    
-        with st.expander("💾 Exportar e Importar Bóveda (Respaldo CSV)", expanded=True):
-            st.markdown("Guarda tus pre-conteos en un archivo Excel (CSV) para no perderlos, o sube uno para restaurar la bóveda.")
             
-            col_bov1, col_bov2 = st.columns(2)
-            with col_bov1:
-                # Descargar Bóveda
-                df_boveda_full = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
-                if not df_boveda_full.empty:
-                    csv_boveda = df_boveda_full.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="⬇️ Descargar Bóveda (CSV)", 
-                        data=csv_boveda, 
-                        file_name="respaldo_boveda_champlitte.csv", 
-                        mime="text/csv", 
-                        use_container_width=True
-                    )
-                else:
-                    st.download_button("⬇️ Descargar Bóveda (CSV)", data="", file_name="respaldo.csv", disabled=True, use_container_width=True)
-
-            with col_bov2:
-                # Subir Bóveda
-                uploaded_csv = st.file_uploader("⬆️ Subir archivo CSV", type=["csv"], label_visibility="collapsed")
-                if uploaded_csv is not None:
-                    if st.button("🔄 Recuperar Pre-conteos", use_container_width=True):
-                        try:
-                            df_upload = pd.read_csv(uploaded_csv)
-                            # Eliminamos el ID del CSV si existe para evitar choques con la base de datos actual
-                            if 'id' in df_upload.columns:
-                                df_upload = df_upload.drop(columns=['id'])
-                                
-                            df_upload.to_sql("pesajes_guardados", conn, if_exists="append", index=False)
-                            st.success("✅ Pre-conteos restaurados con éxito")
-                            time.sleep(1.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al restaurar: {e}")
-
-        st.markdown("#### Datos actuales en la Bóveda")
-        if not df_guardados.empty:
-            edited_guardados = st.data_editor(df_guardados, use_container_width=True, num_rows="dynamic", hide_index=True, disabled=df_guardados.columns.tolist(), key="editor_db_guardados")
-            if st.button("💾 Eliminar filas borradas de la Bóveda", use_container_width=True):
-                original_ids_g = set(df_guardados['id'])
-                current_ids_g = set(edited_guardados['id'])
-                ids_to_delete_g = original_ids_g - current_ids_g
-                if ids_to_delete_g:
-                    for del_id in ids_to_delete_g:
-                        c.execute("DELETE FROM pesajes_guardados WHERE id = ?", (del_id,))
-                    conn.commit()
-                    st.success(f"Se eliminaron {len(ids_to_delete_g)} registros guardados.")
-                    st.rerun()
-        else:
-            st.info("No hay pre-conteos guardados en la bóveda en este momento.")
+            st.divider()
+            st.markdown("#### 🗃️ Pre-conteos Guardados Actualmente")
+            if not df_guardados.empty:
+                edited_guardados = st.data_editor(df_guardados, use_container_width=True, num_rows="dynamic", hide_index=True, disabled=df_guardados.columns.tolist(), key="editor_db_guardados")
+                if st.button("💾 Eliminar filas borradas de la Bóveda", use_container_width=True):
+                    original_ids_g = set(df_guardados['id'])
+                    current_ids_g = set(edited_guardados['id'])
+                    ids_to_delete_g = original_ids_g - current_ids_g
+                    if ids_to_delete_g:
+                        for del_id in ids_to_delete_g:
+                            c.execute("DELETE FROM pesajes_guardados WHERE id = ?", (del_id,))
+                        conn.commit()
+                        st.success(f"Se eliminaron {len(ids_to_delete_g)} registros guardados.")
+                        st.rerun()
+            else:
+                st.info("No hay pre-conteos guardados en la bóveda en este momento.")
     else:
-        st.info("No hay pesajes registrados en la base de datos.")
+        st.info("No hay pesajes registrados.")
 
 # --- AJUSTE DE TECLADO MÓVIL ---
 components.html(
