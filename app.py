@@ -112,7 +112,11 @@ with st.sidebar:
 # --- FUNCIONES ---
 def truncar_dos_decimales(valor):
     if valor is None: return 0.0
-    return int(valor * 100) / 100.0
+    # Evitamos el error de precisión de punto flotante de Python convirtiendo
+    # de forma estricta a texto primero y luego cortando, garantizando la resta exacta.
+    s = f"{float(valor):.10f}"
+    entero, decimal = s.split('.')
+    return float(f"{entero}.{decimal[:2]}")
 
 def formato_estricto(valor):
     if pd.isna(valor) or valor is None: return "0.00"
@@ -197,7 +201,6 @@ with tab_calc:
     
     texto_reconocido = ""
     
-    # MODIFICACIÓN: Desplegable para el ingreso por voz (cerrado por defecto)
     with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
         st.info("Dicta algo como: 0.620 kg de capacillo chino en contenedor.")
         audio_bytes = st.audio_input("Grabar voz para registro", key="audio_reg")
@@ -266,7 +269,6 @@ with tab_calc:
                     max_coincidencias = coincidencias
                     idx_sugerido = i
 
-    # SELECCIÓN PRINCIPAL (FUERA DEL FORMULARIO PARA FUNCIONAR COMO BUSCADOR GENERAL)
     col_mode1, col_mode2 = st.columns(2)
     with col_mode1:
         nuevo_art = st.toggle("Modo: Artículo NO listado", value=False)
@@ -283,7 +285,6 @@ with tab_calc:
         with c_n2:
             pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
 
-    # FORMULARIO DE INGRESO
     with st.form(key="form_pesaje", clear_on_submit=True):
         st.markdown(f"**Registrando cantidad para:** {art_sel if art_sel else 'Ninguno seleccionado'}")
         if modo_preconteo:
@@ -334,7 +335,6 @@ with tab_calc:
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
-    # --- SECCIÓN INTEGRADA DE AUDITORÍA Y STOCK ---
     if art_sel:
         st.divider()
         st.subheader(f"📊 Desglose y Stock de: {art_sel}")
@@ -354,7 +354,6 @@ with tab_calc:
             
             total_real = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
             
-            # Buscar si ya hay un stock guardado
             c.execute("SELECT stock FROM auditoria_stock WHERE articulo=?", (art_sel,))
             row_stock = c.fetchone()
             saved_stock = row_stock[0] if row_stock else None
@@ -373,9 +372,8 @@ with tab_calc:
                 conn.commit()
                 
                 with col_st3:
-                    st.metric("DIFERENCIA", formato_estricto(diferencia), delta=round(diferencia, 2), delta_color="inverse")
+                    st.metric("DIFERENCIA", formato_estricto(diferencia), delta=formato_estricto(diferencia), delta_color="inverse")
                     
-                # Botón de WhatsApp individual aquí mismo
                 desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art_combined['detalle_formula'], df_art_combined['resultado_pue'])])
                 msg_reporte = (f"*REPORTE DE AUDITORÍA INDIVIDUAL*\n"
                                f"------------------------------\n"
