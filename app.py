@@ -374,8 +374,8 @@ with tab_calc:
                                f"*▪️ {art_sel}*\n"
                                f"Total Físico: {formato_estricto(total_real)}\n"
                                f"Stock Sistema: {formato_estricto(stock_teorico)}\n"
-                               f"Diferencia: *{formato_estricto(diferencia)}*\n"
-                               f"------------------------------\n"
+                               f"Diferencia: *{formato_estricto(diferencia)}*\n\n"
+                        
                                f"*OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
                 
                 url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_reporte)}"
@@ -401,7 +401,7 @@ with tab_historial:
         reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
         reporte_wa_texto += f"👤 *Vendedor:* {elabora_in}\n"
         reporte_wa_texto += f"📅 *Fecha:* {datetime.now(pytz.timezone('America/Mexico_City')).strftime('%d/%m/%Y %H:%M')}\n\n"
-        reporte_wa_texto += "📦 *RESUMEN DE DIFERENCIAS:*\n"
+        reporte_wa_texto += "📦 *RESUMEN DE DIFERENCIAS:*\n\n"
         
         if not df_auditoria.empty:
             for index, row_aud in df_auditoria.iterrows():
