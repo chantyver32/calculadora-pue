@@ -369,8 +369,8 @@ with tab_calc:
                     st.metric("DIFERENCIA", formato_estricto(diferencia), delta=formato_estricto(diferencia), delta_color="inverse")
                     
                 desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art_combined['detalle_formula'], df_art_combined['resultado_pue'])])
-                msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL 📦*\n"
-                               f"------------------------------\n"
+                msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL 📦*\n\n"
+                    
                                f"*▪️ {art_sel}*\n"
                                f"Total Físico: {formato_estricto(total_real)}\n"
                                f"Stock Sistema: {formato_estricto(stock_teorico)}\n"
