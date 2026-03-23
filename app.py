@@ -196,10 +196,6 @@ elabora_in = "PEDRO GARCÍA"
 tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
-with tab_calc:
-    st.title("⚖️ Registro y Control de Stock")
-    
-    texto_reconocido = ""
     
     with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
         st.info("Dicta algo como: 0.620 kg de capacillo chino en contenedor.")
