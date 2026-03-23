@@ -290,7 +290,7 @@ with tab_calc:
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2 = st.columns(2)
-                with c1: t_cont = st.checkbox("Contenedor (0.016)", value=t_cont_sugerido)
+                with c1: t_cont = st.checkbox("Contenedor (0.045)", value=t_cont_sugerido)
                 with c2: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
@@ -306,7 +306,7 @@ with tab_calc:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                tara_total = (0.016 if t_cont else 0) + tm
+                tara_total = (0.045 if t_cont else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
@@ -332,7 +332,6 @@ with tab_calc:
 
     if art_sel:
         st.divider()
-        st.subheader(f"📊 Desglose y Stock de: {art_sel}")
         
         df_actual_art = pd.read_sql("SELECT * FROM pesajes_individuales WHERE articulo=?", conn, params=(art_sel,))
         df_guardados_art = pd.read_sql("SELECT * FROM pesajes_guardados WHERE articulo=?", conn, params=(art_sel,))
