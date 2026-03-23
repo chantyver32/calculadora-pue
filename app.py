@@ -222,8 +222,7 @@ with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=Fal
                     st.error("No se pudo entender el audio.")
                 except sr.RequestError:
                     st.error("Error en el servicio de reconocimiento de voz.")
-
-    texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
+                    texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
     
     idx_sugerido = None
     peso_sugerido = None
