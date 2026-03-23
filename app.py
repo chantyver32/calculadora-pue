@@ -372,7 +372,7 @@ with tab_calc:
                 msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL 📦*\n"
                                f"------------------------------\n"
                                f"*▪️ {art_sel}*\n"
-                               f"*Total Físico: {formato_estricto(total_real)}\n"
+                               f"Total Físico: {formato_estricto(total_real)}\n"
                                f"Stock Sistema: {formato_estricto(stock_teorico)}\n"
                                f"Diferencia: *{formato_estricto(diferencia)}*\n"
                                f"------------------------------\n"
