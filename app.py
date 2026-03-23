@@ -371,7 +371,7 @@ with tab_calc:
                 desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art_combined['detalle_formula'], df_art_combined['resultado_pue'])])
                 msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL 📦*\n"
                                f"------------------------------\n"
-                               f"*Producto: {art_sel}*\n"
+                               f"*▪️ {art_sel}*\n"
                                f"*Total Físico: {formato_estricto(total_real)}\n"
                                f"Stock Sistema: {formato_estricto(stock_teorico)}\n"
                                f"Diferencia: *{formato_estricto(diferencia)}*\n"
