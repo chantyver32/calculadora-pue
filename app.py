@@ -231,12 +231,14 @@ with tab_calc:
     peso_sugerido = None
     pue_sugerido = None
     t_cont_sugerido = False
+    t_bisagra_sugerido = False
     nombre_limpio_sugerido = ""
     
     opciones = sorted(productos.keys())
     
     if texto_filtro:
         if "CONTENEDOR" in texto_filtro: t_cont_sugerido = True
+        if "BISAGRA" in texto_filtro: t_bisagra_sugerido = True
         
         match_pue = re.search(r'(?:PESO UNITARIO|UNITARIO|PUE|ESTÁNDAR|ESTANDAR)[^\d]*(\d+(?:[.,]\d+)?)', texto_filtro)
         if match_pue:
@@ -293,9 +295,10 @@ with tab_calc:
         else:
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
-                c1, c2 = st.columns(2)
+                c1, c2, c3 = st.columns(3)
                 with c1: t_cont = st.checkbox("Contenedor (0.016)", value=t_cont_sugerido)
-                with c2: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
+                with c2: t_bisagra = st.checkbox("Bisagra (0.045)", value=t_bisagra_sugerido)
+                with c3: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
 
@@ -310,7 +313,7 @@ with tab_calc:
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                tara_total = (0.016 if t_cont else 0) + tm
+                tara_total = (0.016 if t_cont else 0) + (0.045 if t_bisagra else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
