@@ -376,7 +376,7 @@ with tab_calc:
                                f"Stock Sistema: {formato_estricto(stock_teorico)}\n"
                                f"Diferencia: *{formato_estricto(diferencia)}*\n\n"
                         
-                               f"*OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
+                               f"*🧮 OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
                 
                 url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_reporte)}"
                 st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE {art_sel}</a>', unsafe_allow_html=True)
