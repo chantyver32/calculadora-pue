@@ -62,11 +62,10 @@ with st.sidebar:
     # Opción 1: Lista desplegable para números de WhatsApp
     opciones_wa = {
         "Contacto Principal": "522283530069",
-        "Contacto Secundario": "522299359597", # Cambia por el número real
-        "Contacto 3": "520987654321"         # Cambia por el número real
+        "Contacto Secundario": "522299359597",
+        "Contacto 3": "520987654321"         
     }
     seleccion_wa = st.selectbox("📇 Selecciona el WhatsApp destino", list(opciones_wa.keys()))
-    # Guardamos el número seleccionado en la variable original para no romper el resto del código
     numero_wa = opciones_wa[seleccion_wa] 
     
     st.divider()
@@ -82,7 +81,6 @@ with st.sidebar:
             if uploaded_csv is not None:
                 try:
                     df_upload = pd.read_csv(uploaded_csv)
-                    # Eliminamos el ID si existe para que no choque con la base de datos
                     if 'id' in df_upload.columns:
                         df_upload = df_upload.drop(columns=['id'])
                     
@@ -112,8 +110,6 @@ with st.sidebar:
 # --- FUNCIONES ---
 def truncar_dos_decimales(valor):
     if valor is None: return 0.0
-    # Evitamos el error de precisión de punto flotante de Python convirtiendo
-    # de forma estricta a texto primero y luego cortando, garantizando la resta exacta.
     s = f"{float(valor):.10f}"
     entero, decimal = s.split('.')
     return float(f"{entero}.{decimal[:2]}")
@@ -171,7 +167,7 @@ productos = {
     "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
     "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364, "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
     "CAJA TUTIS POR PZA A": 0.048, "CAPACILLO CHINO POR PZA B": 0.00104, "CAPACILLO ROJO #72 POR PZA A": 0.000436,
-    "CONT BISAG P/5-6 TUTIS POR PZA A": 0.014, "CUCHARA MED DESCH POR PZA A": 0.00165,
+    "CONT BISAG P/5-6 TUTIS POR PZA A": 0.045, "CUCHARA MED DESCH POR PZA A": 0.00165,
     "ETIQUETA CHAMPLITTE CHICA 4 X 4 POR PZA B": 0.000328, "ETIQUETA CHAMPLITTE MEDIANA 6 X 6 POR PZA B": 0.00057,
     "EMPLAYE GRANDE ROLLO POR PZA T": 1.174, "PAPEL ALUMINIO POR PZA T": 1.342, "SERVILLETA PQ/500 HJ POR PZA A": 0.001192,
     "COFIA POR PQ/100 PZAS A": 0.238, "GUANTES TRANSP POLIURETANO POR PQ/100 PZAS A": 0.086,
@@ -196,9 +192,13 @@ elabora_in = "PEDRO GARCÍA"
 tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
-with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
+with tab_calc:
+    with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
         st.info("Dicta algo como: 0.620 kg de capacillo chino en contenedor.")
         audio_bytes = st.audio_input("Grabar voz para registro", key="audio_reg")
+        
+        texto_reconocido = ""
+        texto_filtro = ""
         
         if audio_bytes:
             recognizer = sr.Recognizer()
@@ -222,7 +222,8 @@ with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=Fal
                     st.error("No se pudo entender el audio.")
                 except sr.RequestError:
                     st.error("Error en el servicio de reconocimiento de voz.")
-                    texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
+            
+            texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
     
     idx_sugerido = None
     peso_sugerido = None
@@ -289,7 +290,7 @@ with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=Fal
             peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with st.expander("🛠️ Configuración de Taras", expanded=True):
                 c1, c2 = st.columns(2)
-                with c1: t_cont = st.checkbox("Contenedor (0.045)", value=t_cont_sugerido)
+                with c1: t_cont = st.checkbox("Contenedor (0.016)", value=t_cont_sugerido)
                 with c2: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
@@ -305,7 +306,7 @@ with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=Fal
             datos_listos = articulo_valido and peso_bruto is not None and pue_valido
             if datos_listos:
                 tm = t_manual if t_manual is not None else 0.0
-                tara_total = (0.045 if t_cont else 0) + tm
+                tara_total = (0.016 if t_cont else 0) + tm
                 peso_neto = peso_bruto - tara_total
                 is_tinta = "TINTA" in str(art_sel).upper()
                 offset = 0.030 if is_tinta else 0.0
