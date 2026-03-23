@@ -194,8 +194,7 @@ tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Repo
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
 with tab_calc:
     with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
-        st.info("Dicta algo como: 0.620 kg de capacillo chino en contenedor.")
-        audio_bytes = st.audio_input("Grabar voz para registro", key="audio_reg")
+        audio_bytes = st.audio_input("Di algo como: .620 de capacillo chino en contenedor.", key="audio_reg")
         
         texto_reconocido = ""
         texto_filtro = ""
