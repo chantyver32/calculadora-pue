@@ -386,7 +386,6 @@ with tab_calc:
 
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
-    st.title("🖨️ Exportación y Base de Datos")
     
     df_actual = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
     df_guardados = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
