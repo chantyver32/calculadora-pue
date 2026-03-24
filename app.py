@@ -493,6 +493,11 @@ with tab_historial:
             )
         else:
             st.info("No hay pre-conteos guardados en la bóveda para generar tarjetas.")
+            
+        # --- NUEVO BOTÓN DE WHATSAPP ---
+        url_abrir_wa = f"https://wa.me/{numero_wa}"
+        st.markdown(f'<a href="{url_abrir_wa}" target="_blank" class="btn-wa">💬 ABRIR WHATSAPP (Para enviar archivos)</a>', unsafe_allow_html=True)
+        # -------------------------------
         
         st.divider()
         
