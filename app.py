@@ -347,13 +347,21 @@ with tab_calc:
             
             total_real = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
             
+            # --- NUEVO: Crear el texto de la suma ---
+            sumandos = [formato_estricto(val) for val in df_art_combined['resultado_pue']]
+            if len(sumandos) > 1:
+                texto_total = f"{' + '.join(sumandos)} = {formato_estricto(total_real)}"
+            else:
+                texto_total = formato_estricto(total_real)
+            # ----------------------------------------
+            
             c.execute("SELECT stock FROM auditoria_stock WHERE articulo=?", (art_sel,))
             row_stock = c.fetchone()
             saved_stock = row_stock[0] if row_stock else None
             
             col_st1, col_st2, col_st3 = st.columns(3)
             with col_st1:
-                st.metric("TOTAL CALCULADO (Sesión + Bóveda)", formato_estricto(total_real))
+                st.metric("TOTAL CALCULADO (Sesión + Bóveda)", texto_total)
             
             with col_st2:
                 stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter")
@@ -365,7 +373,7 @@ with tab_calc:
                 conn.commit()
                 
                 with col_st3:
-                    st.metric("DIFERENCIA", formato_estricto(diferencia), delta=formato_estricto(diferencia), delta_color="inverse")
+                    st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
                     
                 desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art_combined['detalle_formula'], df_art_combined['resultado_pue'])])
                 msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL 📦*\n\n"
