@@ -36,7 +36,13 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .btn-wa:hover { background-color: #128C7E; }
+    
+    /* Tamaño del total azul */
     div[data-testid="stMetricValue"] { font-size: 28px; color: #1f77b4; }
+    
+    /* Tamaño gigante para la diferencia (verde/roja) y su flecha */
+    div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
+    div[data-testid="stMetricDelta"] svg { width: 35px !important; height: 35px !important; }
     </style>
 """, unsafe_allow_html=True)
 
