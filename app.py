@@ -491,7 +491,9 @@ with tab_calc:
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
-    # Mostramos únicamente el historial en la pantalla principal (sin stock ni botón de whatsapp aquí)
+    # -------------------------------------------------------------
+    # MOSTRAR SOLO 3 COLUMNAS EN EL HISTORIAL (Fecha, Operación, Cantidad)
+    # -------------------------------------------------------------
     if art_sel:
         st.divider()
         st.markdown(f"#### 📋 Historial de {art_sel}")
@@ -505,8 +507,11 @@ with tab_calc:
         df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
         
         if not df_art_combined.empty:
-            st.dataframe(df_art_combined[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
-                'fecha_hora': 'Fecha/Hora', 'peso_bruto': 'P. Bruto', 'tara': 'Tara Total', 'pue': 'PUE Usado', 'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad/Resultado'
+            # Aquí seleccionamos solo las 3 columnas y las renombramos
+            st.dataframe(df_art_combined[['fecha_hora', 'detalle_formula', 'resultado_pue']].rename(columns={
+                'fecha_hora': 'Fecha/Hora',
+                'detalle_formula': 'Operación',
+                'resultado_pue': 'Cantidad'
             }), hide_index=True, use_container_width=True)
         else:
             st.info(f"No hay pesajes registrados para este artículo.")
