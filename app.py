@@ -11,6 +11,8 @@ from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 import re  
 import os
 import streamlit.components.v1 as components
@@ -97,7 +99,7 @@ def verificar_login():
         st.session_state.autenticado = False
 
     if not st.session_state.autenticado:
-        st.markdown("<h2 style='text-align: center;'>⚖️ Baja de Insumos</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>⚖️ PUE Champlitte Pro</h2>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align: center; color: gray;'>Control de Acceso</h4>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -154,7 +156,7 @@ with st.sidebar:
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
     elabora_in = st.session_state.get('usuario_actual', 'USUARIO').upper()
     numero_wa = datos_sucursales[sucursal_in]
-    st.caption(f"WhatsApp: **{numero_wa}**")
+    st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
 
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
@@ -211,7 +213,7 @@ def formato_estricto(valor):
     return f"{entero}.{decimal[:2]}"
 
 # --- FUNCIÓN DEL POP-UP ACTUALIZADA (AHORA CON AUDITORÍA) ---
-@st.dialog("✅ Registrado")
+@st.dialog("✅ Registro y Auditoría")
 def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     st.markdown(f"### 📦 {articulo}")
     
@@ -261,11 +263,11 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Continuar", type="primary", use_container_width=True):
+        if st.button("Continuar (Sesión Actual)", type="primary", use_container_width=True):
             st.rerun()
             
     with col2:
-        if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
+        if st.button("📥 Enviar directo a Bóveda", type="secondary", use_container_width=True):
             with conn.session as s:
                 s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
                              SELECT sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
@@ -280,37 +282,77 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
 def generar_word_tarjetas(df):
     doc = Document()
     for section in doc.sections:
-        section.top_margin = Cm(1)
-        section.bottom_margin = Cm(1)
-        section.left_margin = Cm(1)
-        section.right_margin = Cm(1)
+        # Configurar Tamaño Carta (8.5 x 11 pulgadas = 21.59 x 27.94 cm)
+        section.page_width = Cm(21.59)
+        section.page_height = Cm(27.94)
         
-    cols = 4
+        # Margen general de 1.5 cm
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+        section.left_margin = Cm(1.5)
+        section.right_margin = Cm(1.5)
+        
+    # Columnas: Con margen de 1.5cm, quedan 18.59cm utilizables.
+    # Tarjetas de 6 cm -> Caben perfectamente 3 columnas (18 cm).
+    cols = 3
     rows = (len(df) + cols - 1) // cols
     if rows == 0: rows = 1
     
     table = doc.add_table(rows=rows, cols=cols)
-    table.style = 'Table Grid'
+    
+    # ---------------------------------------------------------
+    # Inyectar XML para crear bordes punteados en toda la tabla
+    # ---------------------------------------------------------
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    tblBorders = OxmlElement('w:tblBorders')
+    
+    # Aplicamos estilo 'dashed' (línea punteada para recortar) a todos los bordes
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        border_el = OxmlElement(f'w:{edge}')
+        border_el.set(qn('w:val'), 'dashed')  
+        border_el.set(qn('w:sz'), '4')        # Grosor de la línea
+        border_el.set(qn('w:space'), '0')
+        border_el.set(qn('w:color'), '000000') # Negro
+        tblBorders.append(border_el)
+    tblPr.append(tblBorders)
+    # ---------------------------------------------------------
     
     for idx, row_data in df.iterrows():
         r = idx // cols
         c_idx = idx % cols
         cell = table.cell(r, c_idx)
         
-        cell.width = Cm(5)
-        table.rows[r].height = Cm(2)
+        # Dimensiones de la celda (tarjeta): 6 cm de ancho x 4 cm de alto
+        cell.width = Cm(6)
+        table.rows[r].height = Cm(4)
         table.rows[r].height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
         
-        articulo = str(row_data['articulo'])
-        resultado = formato_estricto(row_data['resultado_pue'])
+        # Centrado Vertical del contenido de la celda
+        tc = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+        tcVAlign = OxmlElement('w:vAlign')
+        tcVAlign.set(qn('w:val'), 'center')
+        tcPr.append(tcVAlign)
         
+        articulo = str(row_data['articulo'])
+        resultado_str = formato_estricto(row_data['resultado_pue'])
+        
+        # Quitamos ".00" si el producto es una pieza (PZA, PZAS)
+        if "PZA" in articulo.upper():
+            if resultado_str.endswith(".00"):
+                resultado_str = resultado_str[:-3]
+        
+        # Textos internos
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run1 = p.add_run(f"\n{articulo}\n")
+        
+        run1 = p.add_run(f"{articulo}\n")
         run1.font.size = Pt(8)
         run1.bold = True
         
-        run2 = p.add_run(f"\nTotal: {resultado}")
+        # Insertamos el número directamente, sin la palabra "Total: "
+        run2 = p.add_run(f"\n{resultado_str}")
         run2.font.size = Pt(12)
         run2.bold = True
 
@@ -342,7 +384,7 @@ productos = {
 }
 
 # 4. INTERFAZ
-tab_calc, tab_historial = st.tabs(["📟 Calculadora", "📋 Preconteos"])
+tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
 with tab_calc:
