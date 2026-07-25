@@ -12,6 +12,7 @@ from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
 import re  
+import os  # <-- Añadido para poder leer la contraseña secreta de Render
 import streamlit.components.v1 as components
 
 # 1. CONFIGURACIÓN Y ESTADO
@@ -64,9 +65,67 @@ with conn.session as s:
                  total_real REAL, stock REAL, diferencia REAL, UNIQUE(sucursal, articulo))'''))
     s.commit()
 
+# ------------------ SISTEMA DE USUARIOS EN SUPABASE ------------------
+# 1. Crear la tabla de usuarios si no existe y poner un admin por defecto
+with conn.session as s:
+    s.execute(text('''CREATE TABLE IF NOT EXISTS usuarios 
+                 (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT)'''))
+    
+    # Verificamos si la tabla está vacía para crear un usuario maestro inicial
+    res = s.execute(text("SELECT COUNT(*) FROM usuarios")).fetchone()
+    if res[0] == 0:
+        clave_secreta = os.getenv("PASS_ADMIN", "Temp123*")
+        s.execute(text("INSERT INTO usuarios (username, password) VALUES ('admin', :pass)"), {"pass": clave_secreta})
+    s.commit()
+
+# 2. Pantalla de Login
+def verificar_login():
+    if "autenticado" not in st.session_state:
+        st.session_state.autenticado = False
+
+    if not st.session_state.autenticado:
+        st.markdown("<h2 style='text-align: center;'>⚖️ PUE Champlitte Pro</h2>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align: center; color: gray;'>Control de Acceso</h4>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            with st.form("form_login"):
+                usuario_input = st.text_input("👤 Usuario:")
+                password_input = st.text_input("🔑 Contraseña:", type="password")
+                btn_login = st.form_submit_button("Iniciar Sesión", use_container_width=True, type="primary")
+                
+                if btn_login:
+                    df_check = conn.query("SELECT * FROM usuarios WHERE username = :u AND password = :p", 
+                                          params={"u": usuario_input.strip(), "p": password_input}, ttl=0)
+                    
+                    if not df_check.empty:
+                        st.session_state.autenticado = True
+                        st.session_state.usuario_actual = usuario_input.strip()
+                        st.success("✅ ¡Bienvenido!")
+                        time.sleep(0.8)
+                        st.rerun()
+                    else:
+                        st.error("❌ Usuario o contraseña incorrectos.")
+        return False
+    return True
+
+# Si no ha iniciado sesión, detenemos la app aquí y mostramos el login
+if not verificar_login():
+    st.stop()
+# ---------------------------------------------------------------------
+
 # --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
     st.markdown("### 🏢 Datos de Sesión")
+    
+    # --- NUEVO: Mostrar usuario y botón de cerrar sesión ---
+    st.caption(f"👤 Conectado como: **{st.session_state.get('usuario_actual', 'Usuario')}**")
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        st.session_state.autenticado = False
+        if "usuario_actual" in st.session_state:
+            del st.session_state["usuario_actual"]
+        st.rerun()
+    st.divider()
     
     datos_sucursales = {
         "URANO": "522299272100",
@@ -670,4 +729,4 @@ components.html(
     </script>
     """,
     height=0
-) 
+)
