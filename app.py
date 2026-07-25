@@ -406,6 +406,7 @@ with tab_calc:
     if art_sel:
         st.divider()
         
+        # Leemos los datos directamente FILTRADOS POR SUCURSAL
         df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         
@@ -427,6 +428,7 @@ with tab_calc:
             else:
                 texto_total = formato_estricto(total_real)
             
+            # Buscamos el stock anterior si existe, filtrado por sucursal
             df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
             saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
             
@@ -470,6 +472,7 @@ with tab_calc:
 
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
+    # Lectura Global Filtrada por sucursal
     df_actual = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
     df_guardados = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
     
@@ -647,25 +650,63 @@ with tab_historial:
         st.info(f"No hay pesajes registrados para {sucursal_in}.")
 
 # --- AUTO-FOCO CON JAVASCRIPT ---
+# Referenciamos el documento principal de Streamlit desde el iframe del componente
 components.html(
     """
     <script>
-    // 1. Configurar teclado numérico para móviles
-    const num_inputs = window.parent.document.querySelectorAll('input[type="number"]');
+    // Referencia al documento principal de Streamlit
+    const doc = window.parent.document;
+
+    // 1. Configurar teclado numérico para móviles en campos de número existentes (existente)
+    const num_inputs = doc.querySelectorAll('input[type="number"]');
     num_inputs.forEach(input => {
         input.setAttribute('enterkeyhint', 'done');
     });
 
-    // 2. Hacer foco automático en el selector de artículos para ahorrar tiempo
+    // 2. Hacer foco automático en el selector de artículos al cargar (existente, con pequeño delay)
     setTimeout(() => {
-        const mainContent = window.parent.document.querySelector('.main');
-        if (mainContent) {
-            const selectores = mainContent.querySelectorAll('input[aria-autocomplete="list"], input[role="combobox"]');
-            if(selectores.length > 0){
-                selectores[0].focus();
-            }
+        const selectores = doc.querySelectorAll('input[aria-autocomplete="list"], input[role="combobox"]');
+        if(selectores.length > 0){
+            selectores[0].focus();
         }
-    }, 600); 
+    }, 700); 
+
+    // --- NUEVA FUNCIÓN SOLICITADA ---
+    // 3. Scroll automático al Selectbox cuando se enfoca o se escribe (para móviles)
+    function handleMobileScroll(event) {
+        // Un pequeño retraso para permitir que el teclado virtual aparezca y modifique el viewport
+        setTimeout(() => {
+            // "block: 'nearest'" desplaza el elemento lo mínimo necesario para ser visible.
+            // "block: 'center'" lo centra en la pantalla, lo cual puede ser mejor en móviles.
+            // Usamos 'smooth' para una animación suave.
+            event.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 400); // 400ms suele ser suficiente para que el teclado suba
+    }
+
+    function setupScrollListeners() {
+        // Buscamos el input específico dentro del Selectbox de Streamlit
+        const selectboxInput = doc.querySelector('div[data-testid="stSelectbox"] input');
+
+        if (selectboxInput && !selectboxInput.dataset.scrollListenerAttached) {
+            // Escuchamos el evento 'focus' (cuando el usuario tapa para escribir o aparece el teclado)
+            selectboxInput.addEventListener('focus', handleMobileScroll);
+            
+            // También escuchamos 'input' (cuando empiezan a escribir), por si el 'focus' falla en algunos navegadores
+            selectboxInput.addEventListener('input', handleMobileScroll);
+
+            // Marcamos el input para no duplicar los listeners si la app recarga fragmentos
+            selectboxInput.dataset.scrollListenerAttached = "true"; 
+        }
+    }
+
+    // Ejecutar inmediatamente al cargar el componente
+    setupScrollListeners();
+
+    // Streamlit es dinámico, por lo que usamos un MutationObserver para re-adjuntar
+    // los listeners si el elemento del DOM es recreado por Streamlit.
+    const observer = new MutationObserver(setupScrollListeners);
+    observer.observe(doc.body, { childList: true, subtree: true });
+
     </script>
     """,
     height=0
