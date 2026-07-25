@@ -24,11 +24,11 @@ with st.spinner('Iniciando sistema Champlitte... 🥐'):
     
     st.set_page_config(page_title="Insumos", page_icon="⚖️", layout="wide")
 
-# Estilos CSS (Actualizado para quitar espacio extra arriba)
+# Estilos CSS (Corregido para que se vean las pestañas)
 st.markdown("""
     <style>
-    /* Reduce el espacio en blanco superior de la app */
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    /* Ajuste equilibrado del espacio superior para no tapar las pestañas */
+    .block-container { padding-top: 3rem; padding-bottom: 1rem; }
     
     .main { background-color: #f5f7f9; }
     .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
