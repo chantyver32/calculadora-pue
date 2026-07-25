@@ -24,7 +24,7 @@ with st.spinner('Iniciando sistema Champlitte... 🥐'):
     
     st.set_page_config(page_title="Insumos", page_icon="⚖️", layout="wide")
 
-# Estilos CSS (Corregido para que se vean las pestañas)
+# Estilos CSS
 st.markdown("""
     <style>
     /* Ajuste equilibrado del espacio superior para no tapar las pestañas */
@@ -53,6 +53,23 @@ st.markdown("""
     /* Tamaño gigante para la diferencia (verde/roja) y su flecha */
     div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
     div[data-testid="stMetricDelta"] svg { width: 35px !important; height: 35px !important; }
+
+    /* EFECTO GRIS CLARO SEMI-TRANSPARENTE PARA LISTAS DESPLEGABLES */
+    div[data-baseweb="popover"] > div {
+        background-color: rgba(90, 95, 105, 0.6) !important;
+        backdrop-filter: blur(6px) !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+    div[data-baseweb="popover"] ul {
+        background-color: transparent !important; 
+    }
+    div[data-baseweb="popover"] li {
+        background-color: transparent !important;
+    }
+    div[data-baseweb="popover"] li:hover {
+        background-color: rgba(255, 255, 255, 0.15) !important; 
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -75,19 +92,6 @@ with conn.session as s:
     s.commit()
 
 # ------------------ SISTEMA DE USUARIOS EN SUPABASE ------------------
-# 1. Crear la tabla de usuarios si no existe y poner un admin por defecto
-with conn.session as s:
-    s.execute(text('''CREATE TABLE IF NOT EXISTS usuarios 
-                 (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT)'''))
-    
-    # Verificamos si la tabla está vacía para crear un usuario maestro inicial
-    res = s.execute(text("SELECT COUNT(*) FROM usuarios")).fetchone()
-    if res[0] == 0:
-        clave_secreta = os.getenv("PASS_ADMIN", "Temp123*")
-        s.execute(text("INSERT INTO usuarios (username, password) VALUES ('admin', :pass)"), {"pass": clave_secreta})
-    s.commit()
-
-# 2. Pantalla de Login
 def verificar_login():
     if "autenticado" not in st.session_state:
         st.session_state.autenticado = False
@@ -118,7 +122,6 @@ def verificar_login():
         return False
     return True
 
-# Si no ha iniciado sesión, detenemos la app aquí y mostramos el login
 if not verificar_login():
     st.stop()
 # ---------------------------------------------------------------------
@@ -127,7 +130,6 @@ if not verificar_login():
 with st.sidebar:
     st.markdown("### 🏢 Datos de Sesión")
     
-    # Mostrar usuario y botón de cerrar sesión
     st.caption(f"👤 Conectado como: **{st.session_state.get('usuario_actual', 'Usuario')}**")
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.autenticado = False
@@ -137,41 +139,20 @@ with st.sidebar:
     st.divider()
     
     datos_sucursales = {
-        "URANO": "522299272100",
-        "COSTA DE ORO": "522299272100",
-        "COSTA VERDE": "522299359597",
-        "DÍAZ MIRÓN": "522291302759",
-        "EJÉRCITO MEXICANO": "522299272107",
-        "PLAZA RÍO": "522299864120",
-        "PLAYAS DEL CONCHAL": "522291794020",
-        "COYOL": "522299398334",
-        "LA PLACITA": "522299208481",
-        "CUAUHTÉMOC": "522291651340",
-        "MARIO MOLINA": "522291780851",
-        "RAFAEL CUERVO": "522291980229",
-        "RÍO MEDIO": "522291005852",
-        "DIVERPLAZA": "522293763180",
-        "BOLÍVAR": "522291002947",
-        "CIRCUNVALACIÓN": "522299393726",
-        "J.B. LOBOS": "522299201956",
-        "YÁÑEZ": "522293764940",
-        "PALACIO DE HIERRO": "522299272100",
-        "CIUDAD INDUSTRIAL": "522299200278",
-        "DONATO CASAS": "522291653833",
-        "LAS VEGAS": "522291932980",
-        "PUENTE MORENO": "522296893999",
-        "CONDESA": "522299863464",
-        "MURILLO VIDAL": "522286886443",
-        "ARAUCARIAS": "522281177133",
-        "ÁVILA CAMACHO": "522288170989",
+        "URANO": "522299272100", "COSTA DE ORO": "522299272100", "COSTA VERDE": "522299359597",
+        "DÍAZ MIRÓN": "522291302759", "EJÉRCITO MEXICANO": "522299272107", "PLAZA RÍO": "522299864120",
+        "PLAYAS DEL CONCHAL": "522291794020", "COYOL": "522299398334", "LA PLACITA": "522299208481",
+        "CUAUHTÉMOC": "522291651340", "MARIO MOLINA": "522291780851", "RAFAEL CUERVO": "522291980229",
+        "RÍO MEDIO": "522291005852", "DIVERPLAZA": "522293763180", "BOLÍVAR": "522291002947",
+        "CIRCUNVALACIÓN": "522299393726", "J.B. LOBOS": "522299201956", "YÁÑEZ": "522293764940",
+        "PALACIO DE HIERRO": "522299272100", "CIUDAD INDUSTRIAL": "522299200278", "DONATO CASAS": "522291653833",
+        "LAS VEGAS": "522291932980", "PUENTE MORENO": "522296893999", "CONDESA": "522299863464",
+        "MURILLO VIDAL": "522286886443", "ARAUCARIAS": "522281177133", "ÁVILA CAMACHO": "522288170989",
         "EMILIANO ZAPATA": "522969628525"
     }
     
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
-    
-    # Asigna automáticamente el nombre del usuario logueado en mayúsculas para los reportes
     elabora_in = st.session_state.get('usuario_actual', 'USUARIO').upper()
-    
     numero_wa = datos_sucursales[sucursal_in]
     st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
 
@@ -201,8 +182,6 @@ with st.sidebar:
                 st.warning("⚠️ Primero selecciona un archivo CSV.")
 
     st.divider()
-    
-    # --- ZONA DE PELIGRO RESTRINGIDA SOLO A ADMIN ---
     if st.session_state.get('usuario_actual') == 'admin':
         with st.expander("🚨 Zona de Peligro (Formatear Nube)", expanded=False):
             st.warning("⚠️ ESTE BOTÓN BORRA TODAS LAS TABLAS PARA ACTUALIZAR LA ESTRUCTURA.")
@@ -231,32 +210,66 @@ def formato_estricto(valor):
     entero, decimal = s.split('.')
     return f"{entero}.{decimal[:2]}"
 
-# --- FUNCIÓN DEL POP-UP (MODAL) ACTUALIZADA CON BOTÓN DE BÓVEDA ---
-@st.dialog("✅ Registro Guardado")
-def mostrar_popup_exito(id_registro, articulo, resultado, sucursal, formula):
+# --- FUNCIÓN DEL POP-UP ACTUALIZADA (AHORA CON AUDITORÍA) ---
+@st.dialog("✅ Registro y Auditoría")
+def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     st.markdown(f"### 📦 {articulo}")
-    st.metric(label="Total Registrado", value=formato_estricto(resultado))
-    st.caption(f"📍 Sucursal: {sucursal}")
-    st.caption(f"🧮 Operación: {formula}")
+    
+    # Consultar todos los pesajes (sesión + bóveda) para este artículo
+    df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
+    df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
+    df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
+    
+    total_real = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
+    
+    # Crear string de la sumatoria (Ej. 40.00 + 13.78 = 53.78)
+    sumandos = [formato_estricto(val) for val in df_art_combined['resultado_pue']]
+    if len(sumandos) > 1:
+        texto_total = f"{' + '.join(sumandos)} = {formato_estricto(total_real)}"
+    else:
+        texto_total = formato_estricto(total_real)
+    
+    st.metric("TOTAL CALCULADO (Sesión + Bóveda)", texto_total)
+    
+    st.divider()
+    
+    # Manejo de Stock y Diferencia dentro del Pop-up
+    df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
+    saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
+    
+    col_st1, col_st2 = st.columns(2)
+    with col_st1:
+        stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter", key=f"modal_stock_{id_registro}")
+        
+    with col_st2:
+        if stock_teorico is not None:
+            diferencia = truncar_dos_decimales(total_real - stock_teorico)
+            st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
+            
+            # Guardado automático de la auditoría en BD
+            with conn.session as s:
+                s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, total_real, stock, diferencia) 
+                             VALUES (:suc, :art, :tr, :stk, :dif)
+                             ON CONFLICT (sucursal, articulo) DO UPDATE 
+                             SET total_real = EXCLUDED.total_real, 
+                                 stock = EXCLUDED.stock, 
+                                 diferencia = EXCLUDED.diferencia"""), 
+                          {"suc": sucursal, "art": articulo, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                s.commit()
     
     st.divider()
     
     col1, col2 = st.columns(2)
-    
     with col1:
-        # Botón 1 (Azul): Solo recarga para el siguiente producto (se queda en sesión actual)
         if st.button("Continuar (Sesión Actual)", type="primary", use_container_width=True):
             st.rerun()
             
     with col2:
-        # Botón 2 (Gris): Mueve ESTE registro específico a la Bóveda directamente
         if st.button("📥 Enviar directo a Bóveda", type="secondary", use_container_width=True):
             with conn.session as s:
-                # Mover el registro específico a pesajes_guardados
                 s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
                              SELECT sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
                              FROM pesajes_individuales WHERE id = :id"""), {"id": id_registro})
-                # Borrarlo de pesajes_individuales
                 s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
                 s.commit()
             st.success("Trasladado a la Bóveda.")
@@ -403,19 +416,14 @@ with tab_calc:
                     max_coincidencias = coincidencias
                     idx_sugerido = i
 
-    # ==========================================
-    # MODOS OCULTOS EN LISTA DESPLEGABLE
-    # ==========================================
     modo_seleccionado = st.selectbox(
         "⚙️ Seleccione el Modo de Registro:",
         ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"],
         index=0
     )
     
-    # Asignamos el valor a las variables originales
     nuevo_art = (modo_seleccionado == "Artículo NO listado")
     modo_preconteo = (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
-    # ==========================================
     
     if not nuevo_art:
         art_sel = st.selectbox("Seleccione Artículo (Aplica para registro y desglose):", opciones, index=idx_sugerido, placeholder="Elija un producto...")
@@ -428,9 +436,6 @@ with tab_calc:
             pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
 
     with st.form(key="form_pesaje", clear_on_submit=True):
-        
-        # TEXTO OCULTO CON COMENTARIO (#)
-        # st.markdown(f"**Registrando cantidad para:** {art_sel if art_sel else 'Ninguno seleccionado'} | **Sucursal:** {sucursal_in}")
         
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
@@ -468,10 +473,8 @@ with tab_calc:
             zona_mexico = pytz.timezone('America/Mexico_City')
             fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
             
-            # Guardamos e intentamos obtener el ID del registro recién creado
             try:
                 with conn.session as s:
-                    # Usamos RETURNING para obtener el ID en PostgreSQL
                     result = s.execute(text("""INSERT INTO pesajes_individuales 
                                  (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
                                  VALUES (:suc, :fh, :art, :pb, :tara, :pue, :rp, :df) RETURNING id"""),
@@ -481,15 +484,17 @@ with tab_calc:
                     id_recien_creado = result.fetchone()[0]
                     s.commit()
                     
-                # LANZAMOS EL POP-UP PASANDO EL ID DEL REGISTRO
-                mostrar_popup_exito(id_recien_creado, art_sel, resultado, sucursal_in, formula)
+                # POP-UP CON SUMATORIA Y AUDITORÍA
+                mostrar_popup_exito(id_recien_creado, art_sel, resultado, sucursal_in)
             except Exception as e:
                 st.error(f"Error al guardar en base de datos: {e}")
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
+    # Mostramos únicamente el historial en la pantalla principal (sin stock ni botón de whatsapp aquí)
     if art_sel:
         st.divider()
+        st.markdown(f"#### 📋 Historial de {art_sel}")
         
         df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
@@ -500,58 +505,11 @@ with tab_calc:
         df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
         
         if not df_art_combined.empty:
-            st.table(df_art_combined[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
+            st.dataframe(df_art_combined[['fecha_hora', 'peso_bruto', 'tara', 'pue', 'detalle_formula', 'resultado_pue']].rename(columns={
                 'fecha_hora': 'Fecha/Hora', 'peso_bruto': 'P. Bruto', 'tara': 'Tara Total', 'pue': 'PUE Usado', 'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad/Resultado'
-            }))
-            
-            total_real = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
-            
-            sumandos = [formato_estricto(val) for val in df_art_combined['resultado_pue']]
-            if len(sumandos) > 1:
-                texto_total = f"{' + '.join(sumandos)} = {formato_estricto(total_real)}"
-            else:
-                texto_total = formato_estricto(total_real)
-            
-            df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
-            saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
-            
-            col_st1, col_st2, col_st3 = st.columns(3)
-            with col_st1:
-                st.metric("TOTAL CALCULADO (Sesión + Bóveda)", texto_total)
-            
-            with col_st2:
-                stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter")
-                
-            if stock_teorico is not None:
-                diferencia = truncar_dos_decimales(total_real - stock_teorico)
-                
-                with conn.session as s:
-                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, total_real, stock, diferencia) 
-                                 VALUES (:suc, :art, :tr, :stk, :dif)
-                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                 SET total_real = EXCLUDED.total_real, 
-                                     stock = EXCLUDED.stock, 
-                                     diferencia = EXCLUDED.diferencia"""), 
-                              {"suc": sucursal_in, "art": art_sel, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
-                    s.commit()
-                
-                with col_st3:
-                    st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
-                    
-                desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art_combined['detalle_formula'], df_art_combined['resultado_pue'])])
-                msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL ({sucursal_in}) 📦*\n\n"
-                    
-                               f"*▪️ {art_sel}*\n"
-                               f"Total Físico: {formato_estricto(total_real)}\n"
-                               f"Stock Sistema: {formato_estricto(stock_teorico)}\n"
-                               f"Diferencia: *{formato_estricto(diferencia)}*\n\n"
-                        
-                               f"*🧮 OPERACIONES Y PRECONTEOS:*\n{desglose_txt}")
-                
-                url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_reporte)}"
-                st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE {art_sel}</a>', unsafe_allow_html=True)
+            }), hide_index=True, use_container_width=True)
         else:
-            st.info(f"No hay pesajes registrados para este artículo en la sucursal {sucursal_in}.")
+            st.info(f"No hay pesajes registrados para este artículo.")
 
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
@@ -735,13 +693,11 @@ with tab_historial:
 components.html(
     """
     <script>
-    // 1. Configurar teclado numérico para móviles
     const num_inputs = window.parent.document.querySelectorAll('input[type="number"]');
     num_inputs.forEach(input => {
         input.setAttribute('enterkeyhint', 'done');
     });
 
-    // 2. Hacer foco automático en el selector de artículos para ahorrar tiempo
     setTimeout(() => {
         const mainContent = window.parent.document.querySelector('.main');
         if (mainContent) {
