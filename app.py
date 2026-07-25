@@ -49,7 +49,7 @@ st.markdown("""
 # 2. CONEXIÓN A LA BASE DE DATOS SUPABASE (POSTGRESQL)
 conn = st.connection("supabase", type="sql")
 
-# Inicialización de tablas en Supabase (Ahora incluyen la columna 'sucursal')
+# Inicialización de tablas en Supabase
 with conn.session as s:
     s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
                  (id SERIAL PRIMARY KEY, sucursal TEXT, fecha_hora TEXT, articulo TEXT, 
@@ -59,7 +59,6 @@ with conn.session as s:
                  (id SERIAL PRIMARY KEY, sucursal TEXT, fecha_hora TEXT, articulo TEXT, 
                  peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)'''))
 
-    # La tabla de auditoría ahora tiene una clave única combinada (sucursal + artículo)
     s.execute(text('''CREATE TABLE IF NOT EXISTS auditoria_stock 
                  (id SERIAL PRIMARY KEY, sucursal TEXT, articulo TEXT, 
                  total_real REAL, stock REAL, diferencia REAL, UNIQUE(sucursal, articulo))'''))
@@ -67,30 +66,46 @@ with conn.session as s:
 
 # --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
-    st.markdown("### ⚙️ Configuración")
-    
-    opciones_wa = {
-        "Contacto Principal": "522283530069",
-        "Contacto Secundario": "522299359597",
-        "Contacto 3": "520987654321"         
-    }
-    seleccion_wa = st.selectbox("📇 Selecciona el WhatsApp destino", list(opciones_wa.keys()))
-    numero_wa = opciones_wa[seleccion_wa] 
-    
-    st.divider()
     st.markdown("### 🏢 Datos de Sesión")
     
-    sucursales_champlitte = [
-        "COSTA DE ORO", "COSTA VERDE", "DÍAZ MIRÓN", "EJÉRCITO MEXICANO", 
-        "PLAZA RÍO", "PLAYAS DEL CONCHAL", "COYOL", "LA PLACITA", 
-        "CUAUHTÉMOC", "MARIO MOLINA", "RAFAEL CUERVO", "RÍO MEDIO", 
-        "DIVERPLAZA", "BOLÍVAR", "CIRCUNVALACIÓN", "J.B. LOBOS", 
-        "YÁÑEZ", "PALACIO DE HIERRO", "CIUDAD INDUSTRIAL", "DONATO CASAS", 
-        "LAS VEGAS", "PUENTE MORENO", "CONDESA", "MURILLO VIDAL", 
-        "ARAUCARIAS", "ÁVILA CAMACHO", "EMILIANO ZAPATA"
-    ]
-    sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", sucursales_champlitte)
-    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO GARCÍA", placeholder="Ej. Juan Pérez")
+    # DICCIONARIO MAESTRO: SUCURSAL -> NÚMERO DE WHATSAPP
+    # Si algún número es fijo y necesitas cambiarlo por el celular del gerente, hazlo aquí.
+    datos_sucursales = {
+        "COSTA DE ORO (MATRIZ)": "522299272100",
+        "COSTA VERDE": "522299359597",
+        "DÍAZ MIRÓN": "522291302759",
+        "EJÉRCITO MEXICANO": "522299272107",
+        "PLAZA RÍO": "522299864120",
+        "PLAYAS DEL CONCHAL": "522291794020",
+        "COYOL": "522299398334",
+        "LA PLACITA": "522299208481",
+        "CUAUHTÉMOC": "522291651340",
+        "MARIO MOLINA": "522291780851",
+        "RAFAEL CUERVO": "522291980229",
+        "RÍO MEDIO": "522291005852",
+        "DIVERPLAZA": "522293763180",
+        "BOLÍVAR": "522291002947",
+        "CIRCUNVALACIÓN": "522299393726",
+        "J.B. LOBOS": "522299201956",
+        "YÁÑEZ": "522293764940",
+        "PALACIO DE HIERRO": "522299272100",
+        "CIUDAD INDUSTRIAL": "522299200278",
+        "DONATO CASAS": "522291653833",
+        "LAS VEGAS": "522291932980",
+        "PUENTE MORENO": "522296893999",
+        "CONDESA": "522299863464",
+        "XALAPA - MURILLO VIDAL": "522286886443",
+        "ARAUCARIAS": "522281177133",
+        "ÁVILA CAMACHO": "522288170989",
+        "EMILIANO ZAPATA (CARDEL)": "522969628525"
+    }
+    
+    sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
+    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO ANTONIO GARCÍA TRUJILLO", placeholder="Ej. Juan Pérez")
+    
+    # Asignación automática del número de WhatsApp basándose en la sucursal elegida
+    numero_wa = datos_sucursales[sucursal_in]
+    st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
 
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
@@ -107,7 +122,6 @@ with st.sidebar:
                     if 'id' in df_upload.columns:
                         df_upload = df_upload.drop(columns=['id'])
                     
-                    # Se inyecta la sucursal actual a los datos importados
                     df_upload['sucursal'] = sucursal_in 
                     df_upload.to_sql("pesajes_guardados", con=conn.engine, if_exists="append", index=False)
                     st.success("✅ Respaldo restaurado con éxito en Supabase")
@@ -127,7 +141,6 @@ with st.sidebar:
                 st.error("Debes confirmar primero")
             else:
                 with conn.session as s:
-                    # Este comando borra las tablas viejas. En el próximo reinicio, se crean las nuevas.
                     s.execute(text("DROP TABLE IF EXISTS pesajes_individuales, pesajes_guardados, auditoria_stock CASCADE"))
                     s.commit()
                 st.success("✅ Base de datos formateada. Reiniciando para aplicar nueva estructura...")
@@ -341,7 +354,6 @@ with tab_calc:
             fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
             
             with conn.session as s:
-                # AQUÍ SE INCLUYE LA SUCURSAL EN EL REGISTRO
                 s.execute(text("""INSERT INTO pesajes_individuales 
                              (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
                              VALUES (:suc, :fh, :art, :pb, :tara, :pue, :rp, :df)"""),
@@ -543,7 +555,6 @@ with tab_historial:
         
         with st.expander("🗑️ Administración de Registros Individuales (Sesión Actual)", expanded=False):
             st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar.")
-            # Quitamos 'sucursal' de las columnas bloqueadas para que no sea visible/editable si lo prefieres, pero lo dejamos disabled
             columnas_bloqueadas = df_actual.columns.tolist() 
             edited_df = st.data_editor(df_actual, use_container_width=True, num_rows="dynamic", hide_index=True, disabled=columnas_bloqueadas, key="editor_db")
             
