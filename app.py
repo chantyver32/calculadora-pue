@@ -12,7 +12,7 @@ from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ROW_HEIGHT_RULE
 import re  
-import os  # <-- Añadido para poder leer la contraseña secreta de Render
+import os
 import streamlit.components.v1 as components
 
 # 1. CONFIGURACIÓN Y ESTADO
@@ -159,7 +159,9 @@ with st.sidebar:
     }
     
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
-    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO GARCÍA", placeholder="Ej. Juan Pérez")
+    
+    # Asigna automáticamente el nombre del usuario logueado en mayúsculas para los reportes
+    elabora_in = st.session_state.get('usuario_actual', 'USUARIO').upper()
     
     numero_wa = datos_sucursales[sucursal_in]
     st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
