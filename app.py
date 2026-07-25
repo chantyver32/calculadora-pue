@@ -101,7 +101,7 @@ with st.sidebar:
     }
     
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
-    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO ANTONIO GARCÍA TRUJILLO", placeholder="Ej. Juan Pérez")
+    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO GARCÍA", placeholder="Ej. Juan Pérez")
     
     # Asignación automática del número de WhatsApp basándose en la sucursal elegida
     numero_wa = datos_sucursales[sucursal_in]
