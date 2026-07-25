@@ -157,18 +157,38 @@ def formato_estricto(valor):
     entero, decimal = s.split('.')
     return f"{entero}.{decimal[:2]}"
 
-# --- NUEVO: FUNCIÓN DEL POP-UP (MODAL) ---
-@st.dialog("✅ Registro Guardado Exitosamente")
-def mostrar_popup_exito(articulo, resultado, sucursal, formula):
+# --- FUNCIÓN DEL POP-UP (MODAL) ACTUALIZADA CON BOTÓN DE BÓVEDA ---
+@st.dialog("✅ Registro Guardado")
+def mostrar_popup_exito(id_registro, articulo, resultado, sucursal, formula):
     st.markdown(f"### 📦 {articulo}")
     st.metric(label="Total Registrado", value=formato_estricto(resultado))
     st.caption(f"📍 Sucursal: {sucursal}")
     st.caption(f"🧮 Operación: {formula}")
     
-    # Al hacer clic, se recarga la página limpiando el formulario para el siguiente producto
-    if st.button("Continuar con el siguiente", type="primary", use_container_width=True):
-        st.rerun()
-# -----------------------------------------
+    st.divider()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Botón 1 (Azul): Solo recarga para el siguiente producto (se queda en sesión actual)
+        if st.button("Continuar (Sesión Actual)", type="primary", use_container_width=True):
+            st.rerun()
+            
+    with col2:
+        # Botón 2 (Gris): Mueve ESTE registro específico a la Bóveda directamente
+        if st.button("📥 Enviar directo a Bóveda", type="secondary", use_container_width=True):
+            with conn.session as s:
+                # Mover el registro específico a pesajes_guardados
+                s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
+                             SELECT sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
+                             FROM pesajes_individuales WHERE id = :id"""), {"id": id_registro})
+                # Borrarlo de pesajes_individuales
+                s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
+                s.commit()
+            st.success("Trasladado a la Bóveda.")
+            time.sleep(0.8)
+            st.rerun()
+# -------------------------------------------------------------------
 
 def generar_word_tarjetas(df):
     doc = Document()
@@ -363,18 +383,23 @@ with tab_calc:
             zona_mexico = pytz.timezone('America/Mexico_City')
             fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
             
-            with conn.session as s:
-                s.execute(text("""INSERT INTO pesajes_individuales 
-                             (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
-                             VALUES (:suc, :fh, :art, :pb, :tara, :pue, :rp, :df)"""),
-                          {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "pb": peso_bruto if not modo_preconteo else 0, 
-                           "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
-                           "rp": resultado, "df": formula})
-                s.commit()
-                
-            st.balloons()
-            # LANZAMOS EL POP-UP QUE PAUSA LA PANTALLA
-            mostrar_popup_exito(art_sel, resultado, sucursal_in, formula)
+            # Guardamos e intentamos obtener el ID del registro recién creado
+            try:
+                with conn.session as s:
+                    # Usamos RETURNING para obtener el ID en PostgreSQL
+                    result = s.execute(text("""INSERT INTO pesajes_individuales 
+                                 (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                                 VALUES (:suc, :fh, :art, :pb, :tara, :pue, :rp, :df) RETURNING id"""),
+                              {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "pb": peso_bruto if not modo_preconteo else 0, 
+                               "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
+                               "rp": resultado, "df": formula})
+                    id_recien_creado = result.fetchone()[0]
+                    s.commit()
+                    
+                # LANZAMOS EL POP-UP PASANDO EL ID DEL REGISTRO
+                mostrar_popup_exito(id_recien_creado, art_sel, resultado, sucursal_in, formula)
+            except Exception as e:
+                st.error(f"Error al guardar en base de datos: {e}")
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
@@ -622,7 +647,6 @@ with tab_historial:
         st.info(f"No hay pesajes registrados para {sucursal_in}.")
 
 # --- AUTO-FOCO CON JAVASCRIPT ---
-# Este script se ejecuta silenciosamente cada vez que la página carga (o cuando cierras el pop-up)
 components.html(
     """
     <script>
@@ -636,13 +660,12 @@ components.html(
     setTimeout(() => {
         const mainContent = window.parent.document.querySelector('.main');
         if (mainContent) {
-            // Busca la caja de texto del selector de artículos de Streamlit
             const selectores = mainContent.querySelectorAll('input[aria-autocomplete="list"], input[role="combobox"]');
             if(selectores.length > 0){
                 selectores[0].focus();
             }
         }
-    }, 600); // 600ms de espera asegura que Streamlit ya dibujó la pantalla
+    }, 600); 
     </script>
     """,
     height=0
