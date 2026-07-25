@@ -99,7 +99,7 @@ def verificar_login():
         st.session_state.autenticado = False
 
     if not st.session_state.autenticado:
-        st.markdown("<h2 style='text-align: center;'>⚖️ PUE Champlitte Pro</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>⚖️ Baja de insumos</h2>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align: center; color: gray;'>Control de Acceso</h4>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -156,7 +156,7 @@ with st.sidebar:
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
     elabora_in = st.session_state.get('usuario_actual', 'USUARIO').upper()
     numero_wa = datos_sucursales[sucursal_in]
-    st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
+    st.caption(f"📱WhatsApp: **{numero_wa}**")
 
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
@@ -175,7 +175,7 @@ with st.sidebar:
                     
                     df_upload['sucursal'] = sucursal_in 
                     df_upload.to_sql("pesajes_guardados", con=conn.engine, if_exists="append", index=False)
-                    st.success("✅ Respaldo restaurado con éxito en Supabase")
+                    st.success("✅ Respaldo restaurado con éxito")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
@@ -186,16 +186,16 @@ with st.sidebar:
     st.divider()
     if st.session_state.get('usuario_actual') == 'admin':
         with st.expander("🚨 Zona de Peligro (Formatear Nube)", expanded=False):
-            st.warning("⚠️ ESTE BOTÓN BORRA TODAS LAS TABLAS PARA ACTUALIZAR LA ESTRUCTURA.")
+            st.warning("⚠️ ESTE BOTÓN BORRA TODA LA BASE DE DATOS.")
             confirmar_borrado = st.checkbox("Confirmar el formateo total")
-            if st.button("⚠️ EJECUTAR REINICIO Y ACTUALIZACIÓN", use_container_width=True):
+            if st.button("⚠️ ELIMINAR TODO.", use_container_width=True):
                 if not confirmar_borrado:
                     st.error("Debes confirmar primero")
                 else:
                     with conn.session as s:
                         s.execute(text("DROP TABLE IF EXISTS pesajes_individuales, pesajes_guardados, auditoria_stock CASCADE"))
                         s.commit()
-                    st.success("✅ Base de datos formateada. Reiniciando para aplicar nueva estructura...")
+                    st.success("✅ Base de datos eliminada")
                     time.sleep(2)
                     st.rerun()
 
@@ -213,7 +213,7 @@ def formato_estricto(valor):
     return f"{entero}.{decimal[:2]}"
 
 # --- FUNCIÓN DEL POP-UP ACTUALIZADA (AHORA CON AUDITORÍA) ---
-@st.dialog("✅ Registro y Auditoría")
+@st.dialog("✅ Registrado")
 def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     st.markdown(f"### 📦 {articulo}")
     
@@ -263,11 +263,11 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Continuar (Sesión Actual)", type="primary", use_container_width=True):
+        if st.button("Continuar", type="primary", use_container_width=True):
             st.rerun()
             
     with col2:
-        if st.button("📥 Enviar directo a Bóveda", type="secondary", use_container_width=True):
+        if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
             with conn.session as s:
                 s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
                              SELECT sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
