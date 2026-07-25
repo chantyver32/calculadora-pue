@@ -24,9 +24,12 @@ with st.spinner('Iniciando sistema Champlitte... 🥐'):
     
     st.set_page_config(page_title="Insumos", page_icon="⚖️", layout="wide")
 
-# Estilos CSS
+# Estilos CSS (Actualizado para quitar espacio extra arriba)
 st.markdown("""
     <style>
+    /* Reduce el espacio en blanco superior de la app */
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    
     .main { background-color: #f5f7f9; }
     .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
     .btn-wa {
@@ -400,11 +403,19 @@ with tab_calc:
                     max_coincidencias = coincidencias
                     idx_sugerido = i
 
-    col_mode1, col_mode2 = st.columns(2)
-    with col_mode1:
-        nuevo_art = st.toggle("Modo: Artículo NO listado", value=False)
-    with col_mode2:
-        modo_preconteo = st.toggle("Modo: PRE-CONTEO MANUAL (Piezas directas)", value=False)
+    # ==========================================
+    # MODOS OCULTOS EN LISTA DESPLEGABLE
+    # ==========================================
+    modo_seleccionado = st.selectbox(
+        "⚙️ Seleccione el Modo de Registro:",
+        ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"],
+        index=0
+    )
+    
+    # Asignamos el valor a las variables originales
+    nuevo_art = (modo_seleccionado == "Artículo NO listado")
+    modo_preconteo = (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
+    # ==========================================
     
     if not nuevo_art:
         art_sel = st.selectbox("Seleccione Artículo (Aplica para registro y desglose):", opciones, index=idx_sugerido, placeholder="Elija un producto...")
@@ -417,7 +428,10 @@ with tab_calc:
             pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
 
     with st.form(key="form_pesaje", clear_on_submit=True):
-        st.markdown(f"**Registrando cantidad para:** {art_sel if art_sel else 'Ninguno seleccionado'} | **Sucursal:** {sucursal_in}")
+        
+        # TEXTO OCULTO CON COMENTARIO (#)
+        # st.markdown(f"**Registrando cantidad para:** {art_sel if art_sel else 'Ninguno seleccionado'} | **Sucursal:** {sucursal_in}")
+        
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
             cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=peso_sugerido, step=1.0, placeholder="Ej. 50")
