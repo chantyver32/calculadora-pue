@@ -16,7 +16,13 @@ import os
 import streamlit.components.v1 as components
 
 # 1. CONFIGURACIÓN Y ESTADO
-st.set_page_config(page_title="PUE Champlitte Pro", layout="wide", page_icon="⚖️")
+
+# ------------------ CONFIGURACIÓN GENERAL ------------------
+with st.spinner('Iniciando sistema Champlitte... 🥐'):
+    zona_mx = pytz.timezone('America/Mexico_City')
+    fecha_hoy_mx = datetime.now(zona_mx).date()
+    
+    st.set_page_config(page_title="Sugeridos Champlitte", page_icon="🥐", layout="wide")
 
 # Estilos CSS
 st.markdown("""
