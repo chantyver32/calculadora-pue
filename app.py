@@ -49,18 +49,20 @@ st.markdown("""
 # 2. CONEXIÓN A LA BASE DE DATOS SUPABASE (POSTGRESQL)
 conn = st.connection("supabase", type="sql")
 
-# Inicialización de tablas en Supabase
+# Inicialización de tablas en Supabase (Ahora incluyen la columna 'sucursal')
 with conn.session as s:
     s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
-                 (id SERIAL PRIMARY KEY, fecha_hora TEXT, articulo TEXT, 
+                 (id SERIAL PRIMARY KEY, sucursal TEXT, fecha_hora TEXT, articulo TEXT, 
                  peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)'''))
 
     s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_guardados 
-                 (id SERIAL PRIMARY KEY, fecha_hora TEXT, articulo TEXT, 
+                 (id SERIAL PRIMARY KEY, sucursal TEXT, fecha_hora TEXT, articulo TEXT, 
                  peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)'''))
 
+    # La tabla de auditoría ahora tiene una clave única combinada (sucursal + artículo)
     s.execute(text('''CREATE TABLE IF NOT EXISTS auditoria_stock 
-                 (articulo TEXT PRIMARY KEY, total_real REAL, stock REAL, diferencia REAL)'''))
+                 (id SERIAL PRIMARY KEY, sucursal TEXT, articulo TEXT, 
+                 total_real REAL, stock REAL, diferencia REAL, UNIQUE(sucursal, articulo))'''))
     s.commit()
 
 # --- BARRA LATERAL (SIDEBAR) ---
@@ -75,28 +77,25 @@ with st.sidebar:
     seleccion_wa = st.selectbox("📇 Selecciona el WhatsApp destino", list(opciones_wa.keys()))
     numero_wa = opciones_wa[seleccion_wa] 
     
-    # --- NUEVO BLOQUE DE DATOS DE SESIÓN ---
     st.divider()
     st.markdown("### 🏢 Datos de Sesión")
     
     sucursales_champlitte = [
-        "COSTA DE ORO (MATRIZ)", "COSTA VERDE", "DÍAZ MIRÓN", "EJÉRCITO MEXICANO", 
+        "COSTA DE ORO", "COSTA VERDE", "DÍAZ MIRÓN", "EJÉRCITO MEXICANO", 
         "PLAZA RÍO", "PLAYAS DEL CONCHAL", "COYOL", "LA PLACITA", 
         "CUAUHTÉMOC", "MARIO MOLINA", "RAFAEL CUERVO", "RÍO MEDIO", 
         "DIVERPLAZA", "BOLÍVAR", "CIRCUNVALACIÓN", "J.B. LOBOS", 
         "YÁÑEZ", "PALACIO DE HIERRO", "CIUDAD INDUSTRIAL", "DONATO CASAS", 
-        "LAS VEGAS", "PUENTE MORENO", "CONDESA", "XALAPA - MURILLO VIDAL", 
-        "ARAUCARIAS", "ÁVILA CAMACHO", "EMILIANO ZAPATA (CARDEL)"
+        "LAS VEGAS", "PUENTE MORENO", "CONDESA", "MURILLO VIDAL", 
+        "ARAUCARIAS", "ÁVILA CAMACHO", "EMILIANO ZAPATA"
     ]
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", sucursales_champlitte)
-    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO ANTONIO GARCÍA TRUJILLO", placeholder="Ej. Juan Pérez")
-    # ------------------------------------------
+    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO GARCÍA", placeholder="Ej. Juan Pérez")
 
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
-    st.info("Guarda o restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos.")
+    st.info(f"Restaura pre-conteos (bóveda) específicamente para {sucursal_in}.")
     
-    # Importar Bóveda
     with st.form("form_restaurar_boveda"):
         uploaded_csv = st.file_uploader("⬆️ Subir Respaldo CSV", type=["csv"])
         btn_restaurar = st.form_submit_button("🔄 Restaurar Preconteos", use_container_width=True)
@@ -108,6 +107,8 @@ with st.sidebar:
                     if 'id' in df_upload.columns:
                         df_upload = df_upload.drop(columns=['id'])
                     
+                    # Se inyecta la sucursal actual a los datos importados
+                    df_upload['sucursal'] = sucursal_in 
                     df_upload.to_sql("pesajes_guardados", con=conn.engine, if_exists="append", index=False)
                     st.success("✅ Respaldo restaurado con éxito en Supabase")
                     time.sleep(1)
@@ -118,18 +119,19 @@ with st.sidebar:
                 st.warning("⚠️ Primero selecciona un archivo CSV.")
 
     st.divider()
-    with st.expander("🚨 Zona de Peligro", expanded=False):
-        confirmar_borrado = st.checkbox("Confirmar que deseo borrar todo")
-        if st.button("⚠️ EJECUTAR RESET TOTAL", use_container_width=True):
+    with st.expander("🚨 Zona de Peligro (Formatear Nube)", expanded=False):
+        st.warning("⚠️ ESTE BOTÓN BORRA TODAS LAS TABLAS PARA ACTUALIZAR LA ESTRUCTURA.")
+        confirmar_borrado = st.checkbox("Confirmar el formateo total")
+        if st.button("⚠️ EJECUTAR REINICIO Y ACTUALIZACIÓN", use_container_width=True):
             if not confirmar_borrado:
                 st.error("Debes confirmar primero")
             else:
                 with conn.session as s:
-                    s.execute(text("TRUNCATE TABLE pesajes_individuales RESTART IDENTITY"))
-                    s.execute(text("TRUNCATE TABLE auditoria_stock"))
+                    # Este comando borra las tablas viejas. En el próximo reinicio, se crean las nuevas.
+                    s.execute(text("DROP TABLE IF EXISTS pesajes_individuales, pesajes_guardados, auditoria_stock CASCADE"))
                     s.commit()
-                st.success("✅ Base de datos limpiada por completo")
-                time.sleep(1.5)
+                st.success("✅ Base de datos formateada. Reiniciando para aplicar nueva estructura...")
+                time.sleep(2)
                 st.rerun()
 
 # --- FUNCIONES ---
@@ -301,7 +303,7 @@ with tab_calc:
             pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
 
     with st.form(key="form_pesaje", clear_on_submit=True):
-        st.markdown(f"**Registrando cantidad para:** {art_sel if art_sel else 'Ninguno seleccionado'}")
+        st.markdown(f"**Registrando cantidad para:** {art_sel if art_sel else 'Ninguno seleccionado'} | **Sucursal:** {sucursal_in}")
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
             cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=peso_sugerido, step=1.0, placeholder="Ej. 50")
@@ -339,25 +341,26 @@ with tab_calc:
             fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
             
             with conn.session as s:
+                # AQUÍ SE INCLUYE LA SUCURSAL EN EL REGISTRO
                 s.execute(text("""INSERT INTO pesajes_individuales 
-                             (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
-                             VALUES (:fh, :art, :pb, :tara, :pue, :rp, :df)"""),
-                          {"fh": fecha_mexico, "art": art_sel, "pb": peso_bruto if not modo_preconteo else 0, 
+                             (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                             VALUES (:suc, :fh, :art, :pb, :tara, :pue, :rp, :df)"""),
+                          {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "pb": peso_bruto if not modo_preconteo else 0, 
                            "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
                            "rp": resultado, "df": formula})
                 s.commit()
                 
             st.balloons()
-            st.success(f"✅ Registrado con éxito: {formato_estricto(resultado)} de {art_sel}")
+            st.success(f"✅ Registrado con éxito en {sucursal_in}: {formato_estricto(resultado)} de {art_sel}")
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
     if art_sel:
         st.divider()
         
-        # Leemos los datos directamente sin caché para tener los más recientes
-        df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art", params={"art": art_sel}, ttl=0)
-        df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art", params={"art": art_sel}, ttl=0)
+        # Leemos los datos directamente FILTRADOS POR SUCURSAL
+        df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
+        df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         
         if not df_guardados_art.empty:
             df_guardados_art['detalle_formula'] = "[GUARDADO] " + df_guardados_art['detalle_formula'].astype(str)
@@ -377,8 +380,8 @@ with tab_calc:
             else:
                 texto_total = formato_estricto(total_real)
             
-            # Buscamos el stock anterior si existe
-            df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art", params={"art": art_sel}, ttl=0)
+            # Buscamos el stock anterior si existe, filtrado por sucursal
+            df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
             saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
             
             col_st1, col_st2, col_st3 = st.columns(3)
@@ -392,20 +395,20 @@ with tab_calc:
                 diferencia = truncar_dos_decimales(total_real - stock_teorico)
                 
                 with conn.session as s:
-                    s.execute(text("""INSERT INTO auditoria_stock (articulo, total_real, stock, diferencia) 
-                                 VALUES (:art, :tr, :stk, :dif)
-                                 ON CONFLICT (articulo) DO UPDATE 
+                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, total_real, stock, diferencia) 
+                                 VALUES (:suc, :art, :tr, :stk, :dif)
+                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
                                  SET total_real = EXCLUDED.total_real, 
                                      stock = EXCLUDED.stock, 
                                      diferencia = EXCLUDED.diferencia"""), 
-                              {"art": art_sel, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                              {"suc": sucursal_in, "art": art_sel, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
                     s.commit()
                 
                 with col_st3:
                     st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
                     
                 desglose_txt = "\n".join([f"• {f} = *{formato_estricto(r)}*" for f, r in zip(df_art_combined['detalle_formula'], df_art_combined['resultado_pue'])])
-                msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL 📦*\n\n"
+                msg_reporte = (f"*📊 REPORTE DE AUDITORÍA INDIVIDUAL ({sucursal_in}) 📦*\n\n"
                     
                                f"*▪️ {art_sel}*\n"
                                f"Total Físico: {formato_estricto(total_real)}\n"
@@ -417,13 +420,14 @@ with tab_calc:
                 url_wa = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_reporte)}"
                 st.markdown(f'<a href="{url_wa}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE {art_sel}</a>', unsafe_allow_html=True)
         else:
-            st.info("No hay pesajes ni preconteos registrados para este artículo aún.")
+            st.info(f"No hay pesajes registrados para este artículo en la sucursal {sucursal_in}.")
 
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
     
-    df_actual = conn.query("SELECT * FROM pesajes_individuales", ttl=0)
-    df_guardados = conn.query("SELECT * FROM pesajes_guardados", ttl=0)
+    # Lectura Global Filtrada por sucursal
+    df_actual = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
+    df_guardados = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
     
     df_guardados_rep = df_guardados.copy()
     if not df_guardados_rep.empty:
@@ -431,8 +435,8 @@ with tab_historial:
     df_combined = pd.concat([df_actual, df_guardados_rep], ignore_index=True)
 
     if not df_combined.empty:
-        st.subheader("1. Generar Reporte Total (WhatsApp)")
-        df_auditoria = conn.query("SELECT * FROM auditoria_stock", ttl=0)
+        st.subheader(f"1. Generar Reporte Total - {sucursal_in} (WhatsApp)")
+        df_auditoria = conn.query("SELECT * FROM auditoria_stock WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
         
         reporte_wa_texto = f"📊 *BAJA DE INSUMOS*\n"
         reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
@@ -511,7 +515,7 @@ with tab_historial:
         st.download_button(
             label="⬇️ Descargar Excel Formato Oficial",
             data=output,
-            file_name="Reporte_Baja_Insumos_Champlitte.xlsx",
+            file_name=f"Reporte_Insumos_{sucursal_in.replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
@@ -525,7 +529,7 @@ with tab_historial:
             st.download_button(
                 label="📄 Descargar Tarjetas en Word (Pre-conteos)",
                 data=word_file,
-                file_name="Tarjetas_Recortables_Preconteos.docx",
+                file_name=f"Tarjetas_Preconteos_{sucursal_in.replace(' ', '_')}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True
             )
@@ -539,6 +543,7 @@ with tab_historial:
         
         with st.expander("🗑️ Administración de Registros Individuales (Sesión Actual)", expanded=False):
             st.markdown("#### Selecciona el renglón de la izquierda y presiona el ícono de papelera 🗑️ para borrar.")
+            # Quitamos 'sucursal' de las columnas bloqueadas para que no sea visible/editable si lo prefieres, pero lo dejamos disabled
             columnas_bloqueadas = df_actual.columns.tolist() 
             edited_df = st.data_editor(df_actual, use_container_width=True, num_rows="dynamic", hide_index=True, disabled=columnas_bloqueadas, key="editor_db")
             
@@ -552,7 +557,7 @@ with tab_historial:
                         for del_id in ids_to_delete:
                             s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": int(del_id)})
                         s.commit()
-                    st.success(f"Se eliminaron {len(ids_to_delete)} registros correctamente en Supabase.")
+                    st.success(f"Se eliminaron {len(ids_to_delete)} registros correctamente.")
                     st.rerun()
                 else:
                     st.info("No detecté ninguna fila eliminada para guardar.")
@@ -567,8 +572,8 @@ with tab_historial:
                     with conn.session as s:
                         for sel in seleccionados_para_proteger:
                             id_val = int(sel.split(" | ")[0].replace("ID ", ""))
-                            s.execute(text("""INSERT INTO pesajes_guardados (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
-                                         SELECT fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
+                            s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
+                                         SELECT sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
                                          FROM pesajes_individuales WHERE id = :id"""), {"id": id_val})
                             s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_val})
                         s.commit()
@@ -594,9 +599,9 @@ with tab_historial:
                         st.success(f"Se eliminaron {len(ids_to_delete_g)} registros guardados.")
                         st.rerun()
             else:
-                st.info("No hay pre-conteos guardados en la bóveda en este momento.")
+                st.info("No hay pre-conteos guardados en la bóveda para esta sucursal en este momento.")
     else:
-        st.info("No hay pesajes registrados.")
+        st.info(f"No hay pesajes registrados para {sucursal_in}.")
 
 # --- AJUSTE DE TECLADO MÓVIL ---
 components.html(
