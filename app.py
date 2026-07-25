@@ -69,7 +69,8 @@ with st.sidebar:
     st.markdown("### 🏢 Datos de Sesión")
     
     datos_sucursales = {
-        "COSTA DE ORO (MATRIZ)": "522299272100",
+        "URANO": "522299272100",
+        "COSTA DE ORO": "522299272100",
         "COSTA VERDE": "522299359597",
         "DÍAZ MIRÓN": "522291302759",
         "EJÉRCITO MEXICANO": "522299272107",
@@ -92,14 +93,14 @@ with st.sidebar:
         "LAS VEGAS": "522291932980",
         "PUENTE MORENO": "522296893999",
         "CONDESA": "522299863464",
-        "XALAPA - MURILLO VIDAL": "522286886443",
+        "MURILLO VIDAL": "522286886443",
         "ARAUCARIAS": "522281177133",
         "ÁVILA CAMACHO": "522288170989",
-        "EMILIANO ZAPATA (CARDEL)": "522969628525"
+        "EMILIANO ZAPATA": "522969628525"
     }
     
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
-    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO ANTONIO GARCÍA TRUJILLO", placeholder="Ej. Juan Pérez")
+    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO GARCÍA", placeholder="Ej. Juan Pérez")
     
     numero_wa = datos_sucursales[sucursal_in]
     st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
