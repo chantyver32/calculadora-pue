@@ -1,8 +1,7 @@
 streamlit
 pandas
-xlsxwriter
-python-docx
 SpeechRecognition
+python-docx
 pytz
-psycopg2-binary
 SQLAlchemy
+psycopg2-binary
