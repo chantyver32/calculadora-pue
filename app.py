@@ -118,7 +118,7 @@ if not verificar_login():
 with st.sidebar:
     st.markdown("### 🏢 Datos de Sesión")
     
-    # --- NUEVO: Mostrar usuario y botón de cerrar sesión ---
+    # Mostrar usuario y botón de cerrar sesión
     st.caption(f"👤 Conectado como: **{st.session_state.get('usuario_actual', 'Usuario')}**")
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.autenticado = False
@@ -190,19 +190,22 @@ with st.sidebar:
                 st.warning("⚠️ Primero selecciona un archivo CSV.")
 
     st.divider()
-    with st.expander("🚨 Zona de Peligro (Formatear Nube)", expanded=False):
-        st.warning("⚠️ ESTE BOTÓN BORRA TODAS LAS TABLAS PARA ACTUALIZAR LA ESTRUCTURA.")
-        confirmar_borrado = st.checkbox("Confirmar el formateo total")
-        if st.button("⚠️ EJECUTAR REINICIO Y ACTUALIZACIÓN", use_container_width=True):
-            if not confirmar_borrado:
-                st.error("Debes confirmar primero")
-            else:
-                with conn.session as s:
-                    s.execute(text("DROP TABLE IF EXISTS pesajes_individuales, pesajes_guardados, auditoria_stock CASCADE"))
-                    s.commit()
-                st.success("✅ Base de datos formateada. Reiniciando para aplicar nueva estructura...")
-                time.sleep(2)
-                st.rerun()
+    
+    # --- ZONA DE PELIGRO RESTRINGIDA SOLO A ADMIN ---
+    if st.session_state.get('usuario_actual') == 'admin':
+        with st.expander("🚨 Zona de Peligro (Formatear Nube)", expanded=False):
+            st.warning("⚠️ ESTE BOTÓN BORRA TODAS LAS TABLAS PARA ACTUALIZAR LA ESTRUCTURA.")
+            confirmar_borrado = st.checkbox("Confirmar el formateo total")
+            if st.button("⚠️ EJECUTAR REINICIO Y ACTUALIZACIÓN", use_container_width=True):
+                if not confirmar_borrado:
+                    st.error("Debes confirmar primero")
+                else:
+                    with conn.session as s:
+                        s.execute(text("DROP TABLE IF EXISTS pesajes_individuales, pesajes_guardados, auditoria_stock CASCADE"))
+                        s.commit()
+                    st.success("✅ Base de datos formateada. Reiniciando para aplicar nueva estructura...")
+                    time.sleep(2)
+                    st.rerun()
 
 # --- FUNCIONES ---
 def truncar_dos_decimales(valor):
