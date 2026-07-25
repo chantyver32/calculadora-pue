@@ -75,6 +75,23 @@ with st.sidebar:
     seleccion_wa = st.selectbox("📇 Selecciona el WhatsApp destino", list(opciones_wa.keys()))
     numero_wa = opciones_wa[seleccion_wa] 
     
+    # --- NUEVO BLOQUE DE DATOS DE SESIÓN ---
+    st.divider()
+    st.markdown("### 🏢 Datos de Sesión")
+    
+    sucursales_champlitte = [
+        "COSTA DE ORO (MATRIZ)", "COSTA VERDE", "DÍAZ MIRÓN", "EJÉRCITO MEXICANO", 
+        "PLAZA RÍO", "PLAYAS DEL CONCHAL", "COYOL", "LA PLACITA", 
+        "CUAUHTÉMOC", "MARIO MOLINA", "RAFAEL CUERVO", "RÍO MEDIO", 
+        "DIVERPLAZA", "BOLÍVAR", "CIRCUNVALACIÓN", "J.B. LOBOS", 
+        "YÁÑEZ", "PALACIO DE HIERRO", "CIUDAD INDUSTRIAL", "DONATO CASAS", 
+        "LAS VEGAS", "PUENTE MORENO", "CONDESA", "XALAPA - MURILLO VIDAL", 
+        "ARAUCARIAS", "ÁVILA CAMACHO", "EMILIANO ZAPATA (CARDEL)"
+    ]
+    sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", sucursales_champlitte)
+    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO ANTONIO GARCÍA TRUJILLO", placeholder="Ej. Juan Pérez")
+    # ------------------------------------------
+
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
     st.info("Guarda o restaura tus preconteos (bóveda) mediante un archivo CSV para mantenerlos fijos y no perderlos.")
@@ -191,10 +208,6 @@ productos = {
     "PRO GEL POR L B": 1.0, "ROLLO TERMICO P/TPV POR PZA A": 1.0, "CUBETA POR PZA M": 1.0, "ESCOBA POR PZA A": 1.0,
     "ESCURRIDOR POR PZA M": 1.0, "RECOGEDOR POR PZA M": 1.0, "MECHUDO POR PZA A": 1.0,
 }
-
-# VARIABLES FIJAS
-sucursal_in = "COSTA VERDE"
-elabora_in = "PEDRO GARCÍA"
 
 # 4. INTERFAZ
 tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
