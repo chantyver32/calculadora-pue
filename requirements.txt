@@ -4,3 +4,5 @@ xlsxwriter
 python-docx
 SpeechRecognition
 pytz
+psycopg2-binary
+SQLAlchemy
