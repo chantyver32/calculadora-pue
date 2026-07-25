@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 8501
 
 # Comando para ejecutar la aplicación (CAMBIA 'app.py' POR EL NOMBRE DE TU ARCHIVO PRINCIPAL)
-CMD mkdir -p .streamlit && echo "[connections.supabase]" > .streamlit/secrets.toml && echo "url = \"$TEMP_SUPABASE_URL\"" >> .streamlit/secrets.toml && streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+CMD mkdir -p .streamlit && echo "[connections.supabase]" > .streamlit/secrets.toml && echo "url = \"$SUPABASE_URL\"" >> .streamlit/secrets.toml && streamlit run app.py --server.port=8501 --server.address=0.0.0.0
