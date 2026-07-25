@@ -68,8 +68,6 @@ with conn.session as s:
 with st.sidebar:
     st.markdown("### 🏢 Datos de Sesión")
     
-    # DICCIONARIO MAESTRO: SUCURSAL -> NÚMERO DE WHATSAPP
-    # Si algún número es fijo y necesitas cambiarlo por el celular del gerente, hazlo aquí.
     datos_sucursales = {
         "COSTA DE ORO (MATRIZ)": "522299272100",
         "COSTA VERDE": "522299359597",
@@ -101,9 +99,8 @@ with st.sidebar:
     }
     
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
-    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO GARCÍA", placeholder="Ej. Juan Pérez")
+    elabora_in = st.text_input("👤 Tu Nombre:", value="PEDRO ANTONIO GARCÍA TRUJILLO", placeholder="Ej. Juan Pérez")
     
-    # Asignación automática del número de WhatsApp basándose en la sucursal elegida
     numero_wa = datos_sucursales[sucursal_in]
     st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
 
@@ -159,6 +156,19 @@ def formato_estricto(valor):
     s = f"{float(valor):.10f}" 
     entero, decimal = s.split('.')
     return f"{entero}.{decimal[:2]}"
+
+# --- NUEVO: FUNCIÓN DEL POP-UP (MODAL) ---
+@st.dialog("✅ Registro Guardado Exitosamente")
+def mostrar_popup_exito(articulo, resultado, sucursal, formula):
+    st.markdown(f"### 📦 {articulo}")
+    st.metric(label="Total Registrado", value=formato_estricto(resultado))
+    st.caption(f"📍 Sucursal: {sucursal}")
+    st.caption(f"🧮 Operación: {formula}")
+    
+    # Al hacer clic, se recarga la página limpiando el formulario para el siguiente producto
+    if st.button("Continuar con el siguiente", type="primary", use_container_width=True):
+        st.rerun()
+# -----------------------------------------
 
 def generar_word_tarjetas(df):
     doc = Document()
@@ -363,14 +373,14 @@ with tab_calc:
                 s.commit()
                 
             st.balloons()
-            st.success(f"✅ Registrado con éxito en {sucursal_in}: {formato_estricto(resultado)} de {art_sel}")
+            # LANZAMOS EL POP-UP QUE PAUSA LA PANTALLA
+            mostrar_popup_exito(art_sel, resultado, sucursal_in, formula)
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
     if art_sel:
         st.divider()
         
-        # Leemos los datos directamente FILTRADOS POR SUCURSAL
         df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         
@@ -392,7 +402,6 @@ with tab_calc:
             else:
                 texto_total = formato_estricto(total_real)
             
-            # Buscamos el stock anterior si existe, filtrado por sucursal
             df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
             saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
             
@@ -436,8 +445,6 @@ with tab_calc:
 
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
-    
-    # Lectura Global Filtrada por sucursal
     df_actual = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
     df_guardados = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
     
@@ -614,14 +621,28 @@ with tab_historial:
     else:
         st.info(f"No hay pesajes registrados para {sucursal_in}.")
 
-# --- AJUSTE DE TECLADO MÓVIL ---
+# --- AUTO-FOCO CON JAVASCRIPT ---
+# Este script se ejecuta silenciosamente cada vez que la página carga (o cuando cierras el pop-up)
 components.html(
     """
     <script>
-    const inputs = window.parent.document.querySelectorAll('input[type="number"]');
-    inputs.forEach(input => {
+    // 1. Configurar teclado numérico para móviles
+    const num_inputs = window.parent.document.querySelectorAll('input[type="number"]');
+    num_inputs.forEach(input => {
         input.setAttribute('enterkeyhint', 'done');
     });
+
+    // 2. Hacer foco automático en el selector de artículos para ahorrar tiempo
+    setTimeout(() => {
+        const mainContent = window.parent.document.querySelector('.main');
+        if (mainContent) {
+            // Busca la caja de texto del selector de artículos de Streamlit
+            const selectores = mainContent.querySelectorAll('input[aria-autocomplete="list"], input[role="combobox"]');
+            if(selectores.length > 0){
+                selectores[0].focus();
+            }
+        }
+    }, 600); // 600ms de espera asegura que Streamlit ya dibujó la pantalla
     </script>
     """,
     height=0
