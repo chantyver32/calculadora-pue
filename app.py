@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
+from sqlalchemy import text
 from datetime import datetime
 import urllib.parse
 import pytz
@@ -46,26 +46,27 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. BASE DE DATOS
-conn = sqlite3.connect("pue_champlitte_v4.db", check_same_thread=False)
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
-             peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
+# 2. CONEXIÓN A LA BASE DE DATOS SUPABASE (POSTGRESQL)
+conn = st.connection("supabase", type="sql")
 
-c.execute('''CREATE TABLE IF NOT EXISTS pesajes_guardados 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora TEXT, articulo TEXT, 
-             peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)''')
+# Inicialización de tablas en Supabase
+with conn.session as s:
+    s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
+                 (id SERIAL PRIMARY KEY, fecha_hora TEXT, articulo TEXT, 
+                 peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)'''))
 
-c.execute('''CREATE TABLE IF NOT EXISTS auditoria_stock 
-             (articulo TEXT PRIMARY KEY, total_real REAL, stock REAL, diferencia REAL)''')
-conn.commit()
+    s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_guardados 
+                 (id SERIAL PRIMARY KEY, fecha_hora TEXT, articulo TEXT, 
+                 peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)'''))
 
-# --- BARRA LATERAL (SIDEBAR) ESTILO IMAGEN ---
+    s.execute(text('''CREATE TABLE IF NOT EXISTS auditoria_stock 
+                 (articulo TEXT PRIMARY KEY, total_real REAL, stock REAL, diferencia REAL)'''))
+    s.commit()
+
+# --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
     st.markdown("### ⚙️ Configuración")
     
-    # Opción 1: Lista desplegable para números de WhatsApp
     opciones_wa = {
         "Contacto Principal": "522283530069",
         "Contacto Secundario": "522299359597",
@@ -90,8 +91,8 @@ with st.sidebar:
                     if 'id' in df_upload.columns:
                         df_upload = df_upload.drop(columns=['id'])
                     
-                    df_upload.to_sql("pesajes_guardados", conn, if_exists="append", index=False)
-                    st.success("✅ Respaldo restaurado con éxito")
+                    df_upload.to_sql("pesajes_guardados", con=conn.engine, if_exists="append", index=False)
+                    st.success("✅ Respaldo restaurado con éxito en Supabase")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
@@ -106,9 +107,10 @@ with st.sidebar:
             if not confirmar_borrado:
                 st.error("Debes confirmar primero")
             else:
-                c.execute("DELETE FROM pesajes_individuales")
-                c.execute("DELETE FROM auditoria_stock")  
-                conn.commit()
+                with conn.session as s:
+                    s.execute(text("TRUNCATE TABLE pesajes_individuales RESTART IDENTITY"))
+                    s.execute(text("TRUNCATE TABLE auditoria_stock"))
+                    s.commit()
                 st.success("✅ Base de datos limpiada por completo")
                 time.sleep(1.5)
                 st.rerun()
@@ -323,13 +325,15 @@ with tab_calc:
             zona_mexico = pytz.timezone('America/Mexico_City')
             fecha_mexico = datetime.now(zona_mexico).strftime("%Y-%m-%d %H:%M:%S")
             
-            c.execute("""INSERT INTO pesajes_individuales 
-                         (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
-                         VALUES (?,?,?,?,?,?,?)""",
-                      (fecha_mexico, art_sel, peso_bruto if not modo_preconteo else 0, 
-                       tara_total if not modo_preconteo else 0, pue_final if not modo_preconteo else 0, 
-                       resultado, formula))
-            conn.commit()
+            with conn.session as s:
+                s.execute(text("""INSERT INTO pesajes_individuales 
+                             (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                             VALUES (:fh, :art, :pb, :tara, :pue, :rp, :df)"""),
+                          {"fh": fecha_mexico, "art": art_sel, "pb": peso_bruto if not modo_preconteo else 0, 
+                           "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
+                           "rp": resultado, "df": formula})
+                s.commit()
+                
             st.balloons()
             st.success(f"✅ Registrado con éxito: {formato_estricto(resultado)} de {art_sel}")
         else:
@@ -338,8 +342,9 @@ with tab_calc:
     if art_sel:
         st.divider()
         
-        df_actual_art = pd.read_sql("SELECT * FROM pesajes_individuales WHERE articulo=?", conn, params=(art_sel,))
-        df_guardados_art = pd.read_sql("SELECT * FROM pesajes_guardados WHERE articulo=?", conn, params=(art_sel,))
+        # Leemos los datos directamente sin caché para tener los más recientes
+        df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art", params={"art": art_sel}, ttl=0)
+        df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art", params={"art": art_sel}, ttl=0)
         
         if not df_guardados_art.empty:
             df_guardados_art['detalle_formula'] = "[GUARDADO] " + df_guardados_art['detalle_formula'].astype(str)
@@ -353,17 +358,15 @@ with tab_calc:
             
             total_real = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
             
-            # --- NUEVO: Crear el texto de la suma ---
             sumandos = [formato_estricto(val) for val in df_art_combined['resultado_pue']]
             if len(sumandos) > 1:
                 texto_total = f"{' + '.join(sumandos)} = {formato_estricto(total_real)}"
             else:
                 texto_total = formato_estricto(total_real)
-            # ----------------------------------------
             
-            c.execute("SELECT stock FROM auditoria_stock WHERE articulo=?", (art_sel,))
-            row_stock = c.fetchone()
-            saved_stock = row_stock[0] if row_stock else None
+            # Buscamos el stock anterior si existe
+            df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art", params={"art": art_sel}, ttl=0)
+            saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
             
             col_st1, col_st2, col_st3 = st.columns(3)
             with col_st1:
@@ -374,9 +377,16 @@ with tab_calc:
                 
             if stock_teorico is not None:
                 diferencia = truncar_dos_decimales(total_real - stock_teorico)
-                c.execute("""INSERT OR REPLACE INTO auditoria_stock (articulo, total_real, stock, diferencia) 
-                             VALUES (?, ?, ?, ?)""", (art_sel, total_real, stock_teorico, diferencia))
-                conn.commit()
+                
+                with conn.session as s:
+                    s.execute(text("""INSERT INTO auditoria_stock (articulo, total_real, stock, diferencia) 
+                                 VALUES (:art, :tr, :stk, :dif)
+                                 ON CONFLICT (articulo) DO UPDATE 
+                                 SET total_real = EXCLUDED.total_real, 
+                                     stock = EXCLUDED.stock, 
+                                     diferencia = EXCLUDED.diferencia"""), 
+                              {"art": art_sel, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                    s.commit()
                 
                 with col_st3:
                     st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
@@ -399,8 +409,9 @@ with tab_calc:
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
     
-    df_actual = pd.read_sql("SELECT * FROM pesajes_individuales", conn)
-    df_guardados = pd.read_sql("SELECT * FROM pesajes_guardados", conn)
+    df_actual = conn.query("SELECT * FROM pesajes_individuales", ttl=0)
+    df_guardados = conn.query("SELECT * FROM pesajes_guardados", ttl=0)
+    
     df_guardados_rep = df_guardados.copy()
     if not df_guardados_rep.empty:
         df_guardados_rep['detalle_formula'] = "[GUARDADO] " + df_guardados_rep['detalle_formula'].astype(str)
@@ -408,7 +419,7 @@ with tab_historial:
 
     if not df_combined.empty:
         st.subheader("1. Generar Reporte Total (WhatsApp)")
-        df_auditoria = pd.read_sql("SELECT * FROM auditoria_stock", conn)
+        df_auditoria = conn.query("SELECT * FROM auditoria_stock", ttl=0)
         
         reporte_wa_texto = f"📊 *BAJA DE INSUMOS*\n"
         reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
@@ -508,10 +519,8 @@ with tab_historial:
         else:
             st.info("No hay pre-conteos guardados en la bóveda para generar tarjetas.")
             
-        # --- NUEVO BOTÓN DE WHATSAPP ---
         url_abrir_wa = f"https://wa.me/{numero_wa}"
         st.markdown(f'<a href="{url_abrir_wa}" target="_blank" class="btn-wa">💬 ABRIR WHATSAPP (Para enviar archivos)</a>', unsafe_allow_html=True)
-        # -------------------------------
         
         st.divider()
         
@@ -526,10 +535,11 @@ with tab_historial:
                 ids_to_delete = original_ids - current_ids
                 
                 if ids_to_delete:
-                    for del_id in ids_to_delete:
-                        c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (del_id,))
-                    conn.commit()
-                    st.success(f"Se eliminaron {len(ids_to_delete)} registros correctamente.")
+                    with conn.session as s:
+                        for del_id in ids_to_delete:
+                            s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": int(del_id)})
+                        s.commit()
+                    st.success(f"Se eliminaron {len(ids_to_delete)} registros correctamente en Supabase.")
                     st.rerun()
                 else:
                     st.info("No detecté ninguna fila eliminada para guardar.")
@@ -541,14 +551,15 @@ with tab_historial:
             
             if st.button("📥 Mover seleccionados a la Bóveda"):
                 if seleccionados_para_proteger:
-                    for sel in seleccionados_para_proteger:
-                        id_val = sel.split(" | ")[0].replace("ID ", "")
-                        c.execute("""INSERT INTO pesajes_guardados (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
-                                     SELECT fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
-                                     FROM pesajes_individuales WHERE id = ?""", (id_val,))
-                        c.execute("DELETE FROM pesajes_individuales WHERE id = ?", (id_val,))
-                    conn.commit()
-                    st.success(f"Se han trasladado {len(seleccionados_para_proteger)} registros.")
+                    with conn.session as s:
+                        for sel in seleccionados_para_proteger:
+                            id_val = int(sel.split(" | ")[0].replace("ID ", ""))
+                            s.execute(text("""INSERT INTO pesajes_guardados (fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
+                                         SELECT fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
+                                         FROM pesajes_individuales WHERE id = :id"""), {"id": id_val})
+                            s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_val})
+                        s.commit()
+                    st.success(f"Se han trasladado {len(seleccionados_para_proteger)} registros a la Bóveda de Supabase.")
                     st.rerun()
                 else:
                     st.warning("Selecciona al menos un registro de la lista.")
@@ -561,10 +572,12 @@ with tab_historial:
                     original_ids_g = set(df_guardados['id'])
                     current_ids_g = set(edited_guardados['id'])
                     ids_to_delete_g = original_ids_g - current_ids_g
+                    
                     if ids_to_delete_g:
-                        for del_id in ids_to_delete_g:
-                            c.execute("DELETE FROM pesajes_guardados WHERE id = ?", (del_id,))
-                        conn.commit()
+                        with conn.session as s:
+                            for del_id in ids_to_delete_g:
+                                s.execute(text("DELETE FROM pesajes_guardados WHERE id = :id"), {"id": int(del_id)})
+                            s.commit()
                         st.success(f"Se eliminaron {len(ids_to_delete_g)} registros guardados.")
                         st.rerun()
             else:
