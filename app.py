@@ -97,7 +97,7 @@ def verificar_login():
         st.session_state.autenticado = False
 
     if not st.session_state.autenticado:
-        st.markdown("<h2 style='text-align: center;'>⚖️ PUE Champlitte Pro</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>⚖️ Baja de Insumos</h2>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align: center; color: gray;'>Control de Acceso</h4>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -154,7 +154,7 @@ with st.sidebar:
     sucursal_in = st.selectbox("📍 Selecciona tu sucursal:", list(datos_sucursales.keys()))
     elabora_in = st.session_state.get('usuario_actual', 'USUARIO').upper()
     numero_wa = datos_sucursales[sucursal_in]
-    st.caption(f"📱 Los reportes de WhatsApp se enviarán al: **{numero_wa}**")
+    st.caption(f"WhatsApp: **{numero_wa}**")
 
     st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
@@ -211,7 +211,7 @@ def formato_estricto(valor):
     return f"{entero}.{decimal[:2]}"
 
 # --- FUNCIÓN DEL POP-UP ACTUALIZADA (AHORA CON AUDITORÍA) ---
-@st.dialog("✅ Registro y Auditoría")
+@st.dialog("✅ Registrado")
 def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     st.markdown(f"### 📦 {articulo}")
     
@@ -261,11 +261,11 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Continuar (Sesión Actual)", type="primary", use_container_width=True):
+        if st.button("Continuar", type="primary", use_container_width=True):
             st.rerun()
             
     with col2:
-        if st.button("📥 Enviar directo a Bóveda", type="secondary", use_container_width=True):
+        if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
             with conn.session as s:
                 s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula)
                              SELECT sucursal, fecha_hora, articulo, peso_bruto, tara, pue, resultado_pue, detalle_formula 
@@ -342,7 +342,7 @@ productos = {
 }
 
 # 4. INTERFAZ
-tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
+tab_calc, tab_historial = st.tabs(["📟 Calculadora", "📋 Preconteos"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
 with tab_calc:
@@ -492,11 +492,11 @@ with tab_calc:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
     # -------------------------------------------------------------
-    # MOSTRAR SOLO 3 COLUMNAS EN EL HISTORIAL (Fecha, Operación, Cantidad)
+    # MOSTRAR SOLO 2 COLUMNAS EN EL HISTORIAL (Operación, Cantidad)
     # -------------------------------------------------------------
     if art_sel:
         st.divider()
-        st.markdown(f"#### 📋 Historial de {art_sel}")
+        st.markdown(f"📋 **Historial de {art_sel}**")
         
         df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
@@ -507,9 +507,8 @@ with tab_calc:
         df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
         
         if not df_art_combined.empty:
-            # Aquí seleccionamos solo las 3 columnas y las renombramos
-            st.dataframe(df_art_combined[['fecha_hora', 'detalle_formula', 'resultado_pue']].rename(columns={
-                'fecha_hora': 'Fecha/Hora',
+            # Aquí seleccionamos solo las 2 columnas requeridas y las renombramos
+            st.dataframe(df_art_combined[['detalle_formula', 'resultado_pue']].rename(columns={
                 'detalle_formula': 'Operación',
                 'resultado_pue': 'Cantidad'
             }), hide_index=True, use_container_width=True)
@@ -527,94 +526,7 @@ with tab_historial:
     df_combined = pd.concat([df_actual, df_guardados_rep], ignore_index=True)
 
     if not df_combined.empty:
-        st.subheader(f"1. Generar Reporte Total - {sucursal_in} (WhatsApp)")
-        df_auditoria = conn.query("SELECT * FROM auditoria_stock WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
-        
-        reporte_wa_texto = f"📊 *BAJA DE INSUMOS*\n"
-        reporte_wa_texto += f"🏢 *Sucursal:* {sucursal_in}\n"
-        reporte_wa_texto += f"👤 *Vendedor:* {elabora_in}\n"
-        reporte_wa_texto += f"📅 *Fecha:* {datetime.now(pytz.timezone('America/Mexico_City')).strftime('%d/%m/%Y %H:%M')}\n\n"
-        reporte_wa_texto += "📦 *RESUMEN DE DIFERENCIAS:*\n\n"
-        
-        if not df_auditoria.empty:
-            for index, row_aud in df_auditoria.iterrows():
-                art_actual = row_aud['articulo']
-                df_art_desglose = df_combined[df_combined['articulo'] == art_actual]
-                sumandos = [formato_estricto(val) for val in df_art_desglose['resultado_pue']]
-                
-                if len(sumandos) > 1:
-                    desglose_str = f"{' + '.join(sumandos)} = {formato_estricto(row_aud['total_real'])}"
-                else:
-                    desglose_str = formato_estricto(row_aud['total_real'])
-
-                reporte_wa_texto += f"▪️ *{art_actual}*\n"
-                reporte_wa_texto += f"   Total Físico: {desglose_str}\n"
-                reporte_wa_texto += f"   Stock Sistema: {formato_estricto(row_aud['stock'])}\n"
-                reporte_wa_texto += f"   Diferencia: *{formato_estricto(row_aud['diferencia'])}*\n\n"
-        else:
-            reporte_wa_texto += "No se han calculado stocks en esta sesión.\n"
-            
-        url_wa_reporte = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(reporte_wa_texto)}"
-        st.markdown(f'<a href="{url_wa_reporte}" target="_blank" class="btn-wa">📲 ENVIAR REPORTE TOTAL A WHATSAPP</a>', unsafe_allow_html=True)
-        
-        st.divider()
-
-        st.subheader("2. Reporte Excel Oficial")
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df_empty = pd.DataFrame()
-            df_empty.to_excel(writer, sheet_name='Baja de insumos', index=False)
-            workbook = writer.book
-            worksheet = writer.sheets['Baja de insumos']
-            
-            format_title = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#8B0000', 'font_color': 'white', 'font_size': 12, 'border': 1})
-            format_subtitle = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_size': 11, 'border': 1})
-            format_label = workbook.add_format({'bold': True, 'border': 1})
-            format_data = workbook.add_format({'border': 1})
-            format_header = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#f2f2f2'})
-            format_center = workbook.add_format({'align': 'center', 'border': 1})
-            
-            worksheet.merge_range('A1:D1', 'PASTELERÍA CHAMPLITTE, S.A. DE C.V.', format_title)
-            worksheet.merge_range('A2:D2', 'BAJA DE INSUMOS', format_subtitle)
-            
-            fecha_hoy = datetime.now(pytz.timezone('America/Mexico_City')).strftime("%d/%m/%Y")
-            worksheet.write('A3', 'SUCURSAL', format_label)
-            worksheet.merge_range('B3:D3', sucursal_in, format_data)
-            worksheet.write('A4', 'FECHA', format_label)
-            worksheet.merge_range('B4:D4', fecha_hoy, format_data)
-            worksheet.write('A5', 'ELABORA', format_label)
-            worksheet.merge_range('B5:D5', elabora_in, format_data)
-            
-            headers_excel = ['DESCRIPCIÓN', 'CANTIDAD', 'CÁLCULOS REALIZADOS', 'VENDEDOR']
-            for col_num, data in enumerate(headers_excel):
-                worksheet.write(5, col_num, data, format_header)
-                
-            row = 6
-            for index, row_data in df_combined.iterrows():
-                worksheet.write(row, 0, row_data['articulo'], format_data)
-                worksheet.write(row, 1, float(formato_estricto(row_data['resultado_pue'])), format_center)
-                worksheet.write(row, 2, row_data['detalle_formula'], format_center) 
-                worksheet.write(row, 3, elabora_in, format_center) 
-                row += 1
-                
-            worksheet.set_column('A:A', 35)
-            worksheet.set_column('B:B', 15)
-            worksheet.set_column('C:C', 45)
-            worksheet.set_column('D:D', 20)
-
-        output.seek(0)
-        
-        st.download_button(
-            label="⬇️ Descargar Excel Formato Oficial",
-            data=output,
-            file_name=f"Reporte_Insumos_{sucursal_in.replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-        st.caption("ℹ️ *Nota: WhatsApp no permite adjuntar archivos Excel mediante enlaces automáticos. Por favor, descarga el archivo y adjúntalo manualmente en tu chat.*")
-
-        st.divider()
-        st.subheader("3. Tarjetas Recortables (Word)")
+        st.subheader("📄 Tarjetas Recortables (Word)")
         if not df_guardados.empty:
             df_impresion = df_guardados[['articulo', 'resultado_pue']].copy()
             word_file = generar_word_tarjetas(df_impresion)
