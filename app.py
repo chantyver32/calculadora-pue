@@ -35,7 +35,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------ BASE DE DATOS (SUPABASE) ------------------
-db_url = os.environ.get("DATABASE_URL")
+# CORRECCIÓN: Usar st.secrets en lugar de os.environ para Streamlit Cloud
+db_url = st.secrets["DATABASE_URL"]
 conn = st.connection("supabase", type="sql", url=db_url)
 
 with conn.session as s:
