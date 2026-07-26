@@ -139,16 +139,16 @@ if "show_warning" in st.session_state:
 
 
 # 2. CONEXIÓN A LA BASE DE DATOS SUPABASE (POSTGRESQL)
-db_url = os.environ.get("DATABASE_URL")
+db_url = os.environ.get("SUPABASE_URL")
 
 # --- CORRECCIÓN --- 
 # Si no encuentra la variable en os.environ, busca en st.secrets
 if not db_url:
     try:
-        db_url = st.secrets["DATABASE_URL"]
+        db_url = st.secrets["SUPABASE_URL"]
     except (FileNotFoundError, KeyError):
-        st.error("🚨 Error crítico: No se encontró 'DATABASE_URL' en las variables de entorno ni en los secretos de Streamlit.")
-        st.info("💡 Asegúrate de configurar la variable de entorno 'DATABASE_URL' en el panel de control de tu hosting (por ejemplo, en Render).")
+        st.error("🚨 Error crítico: No se encontró 'SUPABASE_URL' en las variables de entorno ni en los secretos de Streamlit.")
+        st.info("💡 Asegúrate de configurar la variable de entorno 'SUPABASE_URL' en el panel de control de tu hosting (por ejemplo, en Render).")
         st.stop() # Detiene la ejecución para evitar el ArgumentError
 
 conn = st.connection("supabase", type="sql", url=db_url)
