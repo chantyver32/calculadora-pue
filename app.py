@@ -307,7 +307,7 @@ if st.session_state.get('usuario_actual', '').lower() == 'admin':
 # DEFINICIÓN DE POP-UPS (st.dialog)
 # ------------------------------------------------------------
 
-@st.dialog("🗣️")
+@st.dialog("🗣️ Ingreso por Voz")
 def popup_voz():
     datos = st.session_state.confirmacion_voz
     
@@ -383,7 +383,7 @@ def popup_voz():
                 st.error("El nombre no puede estar vacío.")
 
 
-@st.dialog("⚙️")
+@st.dialog("⚙️ Ingreso Manual")
 def popup_manual(nombre_final):
     st.markdown(f"### 📦 {nombre_final}")
     fecha_sugerido = fecha_hoy_mx + timedelta(days=1)
