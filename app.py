@@ -56,34 +56,34 @@ st.markdown("""
     div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
     div[data-testid="stMetricDelta"] svg { width: 35px !important; height: 35px !important; }
 
-    /* ESTILO OSCURO PARA LISTAS DESPLEGABLES (Basado en 94378.jpg) */
+    /* ESTILO OSCURO PARA LISTAS DESPLEGABLES (FONDO NEGRO) */
     
     /* 1. Fondo del menú desplegable (opciones) */
     div[data-baseweb="popover"] > div {
-        background-color: #1a1c24 !important; /* Fondo negro/gris muy oscuro como en la imagen */
+        background-color: #000000 !important; /* Fondo negro puro */
         border-radius: 8px !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.8) !important;
     }
     div[data-baseweb="popover"] ul {
-        background-color: #1a1c24 !important; 
+        background-color: #000000 !important; 
     }
     div[data-baseweb="popover"] li {
         background-color: transparent !important;
-        color: #FAFAFA !important; /* Texto en blanco */
+        color: #FFFFFF !important; /* Texto en blanco para resaltar sobre el negro */
         font-size: 14px !important;
         padding-top: 10px !important;
         padding-bottom: 10px !important;
     }
     div[data-baseweb="popover"] li:hover {
-        background-color: #2b2e3b !important; /* Efecto hover sutil (gris un poco más claro) */
+        background-color: #222222 !important; /* Efecto hover sutil (gris oscuro) */
     }
 
     /* 2. Caja principal del Selectbox (antes de abrir) */
     div[data-baseweb="select"] > div {
-        background-color: #1a1c24 !important;
+        background-color: #000000 !important; /* Fondo negro puro */
         border-radius: 8px !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
     }
 
     /* 3. Efecto Focus (borde rojo sutil de Streamlit al hacer clic) */
@@ -94,10 +94,10 @@ st.markdown("""
 
     /* 4. Color del texto seleccionado y el ícono de la flecha */
     div[data-baseweb="select"] div {
-        color: #FAFAFA !important;
+        color: #FFFFFF !important;
     }
     div[data-baseweb="select"] svg {
-        fill: #FAFAFA !important;
+        fill: #FFFFFF !important;
     }
     </style>
 """, unsafe_allow_html=True)
