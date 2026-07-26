@@ -17,12 +17,19 @@ with st.spinner('Iniciando sistema Champlitte... 🥐'):
     
     st.set_page_config(page_title="Sugeridos", page_icon="🥐", layout="wide")
 
-# CSS personalizado para quitar el sombreado gris y poner en NEGRITAS la sucursal seleccionada
+# CSS personalizado para quitar el sombreado gris, poner en NEGRITAS la sucursal seleccionada
+# y evitar el efecto "ghosting" (duplicado) en los botones al hacer clic.
 st.markdown("""
     <style>
     ul[role="listbox"] li[aria-selected="true"] {
         background-color: transparent !important;
         font-weight: bold !important;
+    }
+    
+    /* Eliminar sombra de enfoque en los botones */
+    button:focus {
+        box-shadow: none !important;
+        outline: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -60,6 +67,9 @@ def verificar_login():
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
+            # Contenedor reservado para evitar que el layout "salte" y duplique el botón
+            mensaje_alerta = st.empty() 
+            
             with st.form("form_login"):
                 usuario_input = st.text_input("👤 Usuario:")
                 password_input = st.text_input("🔑 Contraseña:", type="password")
@@ -72,11 +82,11 @@ def verificar_login():
                     if not df_check.empty:
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
-                        st.success("✅ ¡Bienvenid@!")
+                        mensaje_alerta.success("✅ ¡Bienvenid@!") 
                         time.sleep(0.8)
                         st.rerun()
                     else:
-                        st.error("❌ Usuario o contraseña incorrectos.")
+                        mensaje_alerta.error("❌ Usuario o contraseña incorrectos.")
         return False
     return True
 
