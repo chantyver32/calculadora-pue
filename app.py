@@ -61,33 +61,39 @@ st.markdown("""
     
     /* 1. Fondo del menú desplegable (opciones) */
     div[data-baseweb="popover"] > div {
-        background-color: #000000 !important; /* Fondo negro puro */
+        background-color: #1a1a1c !important; /* Fondo oscuro suavizado (tipo panel) */
         border-radius: 8px !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.8) !important;
     }
     div[data-baseweb="popover"] ul {
-        background-color: #000000 !important; 
+        background-color: transparent !important; 
     }
     div[data-baseweb="popover"] li {
         background-color: transparent !important;
-        color: #FFFFFF !important; /* Texto en blanco para resaltar sobre el negro */
+        color: #FFFFFF !important;
         font-size: 14px !important;
         padding-top: 10px !important;
         padding-bottom: 10px !important;
     }
     div[data-baseweb="popover"] li:hover {
-        background-color: #222222 !important; /* Efecto hover sutil (gris oscuro) */
+        background-color: #2d2d30 !important; /* Efecto hover sutil */
+    }
+    
+    /* --> NUEVO: Sombreado de la opción PREVIAMENTE SELECCIONADA <-- */
+    div[data-baseweb="popover"] li[aria-selected="true"] {
+        background-color: #3a3b3e !important; /* Color gris resaltado tipo 94389.jpg */
+        font-weight: bold !important;
     }
 
     /* 2. Caja principal del Selectbox (antes de abrir) */
     div[data-baseweb="select"] > div {
-        background-color: #000000 !important; /* Fondo negro puro */
+        background-color: #1a1a1c !important; 
         border-radius: 8px !important;
-        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
 
-    /* 3. Efecto Focus (borde rojo sutil de Streamlit al hacer clic) */
+    /* 3. Efecto Focus */
     div[data-baseweb="select"] > div:focus-within {
         border-color: #ff4b4b !important; 
         box-shadow: 0 0 0 1px #ff4b4b !important;
@@ -142,12 +148,16 @@ def verificar_login():
                                           params={"u": usuario_input.strip(), "p": password_input}, ttl=0)
                     
                     if not df_check.empty:
+                        # NUEVO: Mensaje de bienvenida y pausa breve
+                        st.success(f"✅ ¡Bienvenido, {usuario_input.strip()}!")
+                        time.sleep(1.2) # Pausa para que el usuario alcance a leerlo
+                        
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
-                        # Quitamos el mensaje de éxito y el sleep para que sea instantáneo y no haya parpadeo de pantalla
                         st.rerun()
                     else:
-                        st.error("❌ Usuario o contraseña incorrectos.")
+                        # NUEVO: Mensaje de error más claro
+                        st.error("❌ Usuario o contraseña no válidos. Por favor, intenta de nuevo.")
         return False
     return True
 
