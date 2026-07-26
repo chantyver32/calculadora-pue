@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
-from datetime import datetime
-import urllib.parse
+from datetime import datetime, timedelta
 import pytz
+import urllib.parse
 import io
-import time
 import speech_recognition as sr
 from docx import Document
 from docx.shared import Cm, Pt
@@ -34,7 +33,26 @@ st.markdown("""
     .block-container { padding-top: 3rem; padding-bottom: 1rem; }
     
     .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
+    
+    /* FIX: Remover sombras (ghosting) y duplicados en los botones al hacer clic o focus */
+    .stButton > button { 
+        width: 100%; 
+        border-radius: 8px; 
+        font-weight: bold; 
+        transition: none !important;
+        -webkit-transition: none !important;
+    }
+    
+    .stButton > button:focus, .stButton > button:active {
+        box-shadow: none !important;
+        outline: none !important;
+        transform: none !important;
+    }
+
+    [data-testid="stElementContainer"] {
+        transition: none !important;
+    }
+    
     .btn-wa {
         background-color: #25D366;
         color: white !important;
@@ -61,7 +79,7 @@ st.markdown("""
     
     /* 1. Fondo del menú desplegable (opciones) */
     div[data-baseweb="popover"] > div {
-        background-color: #1a1a1c !important; /* Fondo oscuro suavizado (tipo panel) */
+        background-color: #1a1a1c !important; 
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.8) !important;
@@ -77,29 +95,25 @@ st.markdown("""
         padding-bottom: 10px !important;
     }
     div[data-baseweb="popover"] li:hover {
-        background-color: #2d2d30 !important; /* Efecto hover sutil */
+        background-color: #2d2d30 !important; 
     }
     
-    /* --> NUEVO: Sombreado de la opción PREVIAMENTE SELECCIONADA <-- */
     div[data-baseweb="popover"] li[aria-selected="true"] {
-        background-color: #3a3b3e !important; /* Color gris resaltado tipo 94389.jpg */
+        background-color: #3a3b3e !important; 
         font-weight: bold !important;
     }
 
-    /* 2. Caja principal del Selectbox (antes de abrir) */
     div[data-baseweb="select"] > div {
         background-color: #1a1a1c !important; 
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
 
-    /* 3. Efecto Focus */
     div[data-baseweb="select"] > div:focus-within {
         border-color: #ff4b4b !important; 
         box-shadow: 0 0 0 1px #ff4b4b !important;
     }
 
-    /* 4. Color del texto seleccionado y el ícono de la flecha */
     div[data-baseweb="select"] div {
         color: #FFFFFF !important;
     }
@@ -109,8 +123,24 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ------------------ SISTEMA DE NOTIFICACIONES POST-RERUN ------------------
+if "show_toast" in st.session_state:
+    st.toast(st.session_state.show_toast)
+    del st.session_state.show_toast
+if "show_success" in st.session_state:
+    st.success(st.session_state.show_success)
+    del st.session_state.show_success
+if "show_error" in st.session_state:
+    st.error(st.session_state.show_error)
+    del st.session_state.show_error
+if "show_warning" in st.session_state:
+    st.warning(st.session_state.show_warning)
+    del st.session_state.show_warning
+
+
 # 2. CONEXIÓN A LA BASE DE DATOS SUPABASE (POSTGRESQL)
-conn = st.connection("supabase", type="sql")
+db_url = os.environ.get("DATABASE_URL")
+conn = st.connection("supabase", type="sql", url=db_url)
 
 # Inicialización de tablas en Supabase
 with conn.session as s:
@@ -150,8 +180,7 @@ def verificar_login():
                     if not df_check.empty:
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
-                        st.success("✅ ¡Bienvenid@!")
-                        time.sleep(0.8)
+                        st.session_state.show_toast = "✅ ¡Bienvenid@!"
                         st.rerun()
                     else:
                         st.error("❌ Usuario o contraseña incorrectos.")
@@ -208,8 +237,7 @@ with st.sidebar:
                     
                     df_upload['sucursal'] = sucursal_in 
                     df_upload.to_sql("pesajes_guardados", con=conn.engine, if_exists="append", index=False)
-                    st.success("✅ Respaldo restaurado con éxito")
-                    time.sleep(1)
+                    st.session_state.show_toast = "✅ Respaldo restaurado con éxito"
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al restaurar: {e}")
@@ -228,8 +256,7 @@ with st.sidebar:
                     with conn.session as s:
                         s.execute(text("DROP TABLE IF EXISTS pesajes_individuales, pesajes_guardados, auditoria_stock CASCADE"))
                         s.commit()
-                    st.success("✅ Base de datos eliminada")
-                    time.sleep(2)
+                    st.session_state.show_toast = "✅ Base de datos eliminada"
                     st.rerun()
 
 # --- FUNCIONES ---
@@ -297,7 +324,7 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Continuar", type="primary", use_container_width=True):
-            st.rerun()
+            st.rerun() # Cierra al instante
             
     with col2:
         if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
@@ -307,9 +334,9 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
                              FROM pesajes_individuales WHERE id = :id"""), {"id": id_registro})
                 s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
                 s.commit()
-            st.success("Trasladado a la Bóveda.")
-            time.sleep(0.8)
-            st.rerun()
+            st.session_state.show_toast = "✅ Trasladado a la Bóveda."
+            st.rerun() # Cierra al instante sin sleep
+
 # -------------------------------------------------------------------
 
 def generar_word_tarjetas(df):
@@ -433,7 +460,7 @@ with tab_calc:
                 audio_data = recognizer.record(source)
                 try:
                     texto_reconocido = recognizer.recognize_google(audio_data, language="es-MX")
-                    st.success(f"**Escuchado:** {texto_reconocido}")
+                    st.toast(f"🎤 Escuchado: {texto_reconocido}")
                     
                     js_tts = f"""
                     <script>
@@ -635,7 +662,7 @@ with tab_historial:
                         for del_id in ids_to_delete:
                             s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": int(del_id)})
                         s.commit()
-                    st.success(f"Se eliminaron {len(ids_to_delete)} registros correctamente.")
+                    st.session_state.show_toast = f"✅ Se eliminaron {len(ids_to_delete)} registros correctamente."
                     st.rerun()
                 else:
                     st.info("No detecté ninguna fila eliminada para guardar.")
@@ -655,7 +682,7 @@ with tab_historial:
                                          FROM pesajes_individuales WHERE id = :id"""), {"id": id_val})
                             s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_val})
                         s.commit()
-                    st.success(f"Se han trasladado {len(seleccionados_para_proteger)} registros a la Bóveda de Supabase.")
+                    st.session_state.show_toast = f"✅ Se han trasladado {len(seleccionados_para_proteger)} registros a la Bóveda."
                     st.rerun()
                 else:
                     st.warning("Selecciona al menos un registro de la lista.")
@@ -674,7 +701,7 @@ with tab_historial:
                             for del_id in ids_to_delete_g:
                                 s.execute(text("DELETE FROM pesajes_guardados WHERE id = :id"), {"id": int(del_id)})
                             s.commit()
-                        st.success(f"Se eliminaron {len(ids_to_delete_g)} registros guardados.")
+                        st.session_state.show_toast = f"✅ Se eliminaron {len(ids_to_delete_g)} registros guardados."
                         st.rerun()
             else:
                 st.info("No hay pre-conteos guardados en la bóveda para esta sucursal en este momento.")
