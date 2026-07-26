@@ -1,4 +1,4 @@
-import streamlit as st
+Import streamlit as st
 import pandas as pd
 from sqlalchemy import text
 from datetime import datetime
@@ -60,31 +60,33 @@ st.markdown("""
     
     /* 1. Fondo del menú desplegable (opciones) */
     div[data-baseweb="popover"] > div {
-        background-color: #262730 !important; /* Fondo oscuro sólido */
+        background-color: #1a1c24 !important; /* Fondo negro/gris muy oscuro como en la imagen */
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
     }
     div[data-baseweb="popover"] ul {
-        background-color: #262730 !important; 
+        background-color: #1a1c24 !important; 
     }
     div[data-baseweb="popover"] li {
         background-color: transparent !important;
-        color: #FAFAFA !important; /* Texto en blanco/gris claro */
+        color: #FAFAFA !important; /* Texto en blanco */
         font-size: 14px !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
     }
     div[data-baseweb="popover"] li:hover {
-        background-color: rgba(255, 255, 255, 0.1) !important; /* Efecto hover sutil */
+        background-color: #2b2e3b !important; /* Efecto hover sutil (gris un poco más claro) */
     }
 
     /* 2. Caja principal del Selectbox (antes de abrir) */
     div[data-baseweb="select"] > div {
-        background-color: #262730 !important;
+        background-color: #1a1c24 !important;
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
 
-    /* 3. Efecto Focus (borde rojo de Streamlit al hacer clic) */
+    /* 3. Efecto Focus (borde rojo sutil de Streamlit al hacer clic) */
     div[data-baseweb="select"] > div:focus-within {
         border-color: #ff4b4b !important; 
         box-shadow: 0 0 0 1px #ff4b4b !important;
