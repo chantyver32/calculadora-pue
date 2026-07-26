@@ -26,10 +26,10 @@ with st.spinner('Iniciando sistema Champlitte... 🥐'):
     zona_mx = pytz.timezone('America/Mexico_City')
     fecha_hoy_mx = datetime.now(zona_mx).date()
 
-# Estilos CSS
+# Estilos CSS Modernos (Unificados con Sugeridos)
 st.markdown("""
     <style>
-    /* Ajuste equilibrado del espacio superior para no tapar las pestañas */
+    /* Ajuste equilibrado del espacio superior */
     .block-container { padding-top: 3rem; padding-bottom: 1rem; }
     
     .main { background-color: #f5f7f9; }
@@ -57,32 +57,21 @@ st.markdown("""
         transition: none !important;
         animation: none !important;
     }
-    
-    .btn-wa {
-        background-color: #25D366;
-        color: white !important;
-        padding: 10px 20px;
-        text-align: center;
-        text-decoration: none !important;
-        display: block;
-        font-size: 14px;
-        font-weight: bold;
-        border-radius: 8px;
-        margin: 10px 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+
+    /* MODERNO: Mover las notificaciones (Toasts) a la parte superior derecha */
+    div[data-testid="stToastContainer"] {
+        top: 2rem !important;
+        bottom: auto !important;
+        right: 2rem !important;
     }
-    .btn-wa:hover { background-color: #128C7E; }
     
-    /* Tamaño del total azul */
-    div[data-testid="stMetricValue"] { font-size: 28px; color: #1f77b4; }
-    
-    /* Tamaño gigante para la diferencia (verde/roja) y su flecha */
-    div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
-    div[data-testid="stMetricDelta"] svg { width: 35px !important; height: 35px !important; }
+    /* Listas desplegables - Quitar fondo en seleccionado */
+    ul[role="listbox"] li[aria-selected="true"] {
+        background-color: transparent !important;
+        font-weight: bold !important;
+    }
 
     /* ESTILO OSCURO PARA LISTAS DESPLEGABLES (FONDO NEGRO) */
-    
-    /* 1. Fondo del menú desplegable (opciones) */
     div[data-baseweb="popover"] > div {
         background-color: #1a1a1c !important; 
         border-radius: 8px !important;
@@ -102,7 +91,6 @@ st.markdown("""
     div[data-baseweb="popover"] li:hover {
         background-color: #2d2d30 !important; 
     }
-    
     div[data-baseweb="popover"] li[aria-selected="true"] {
         background-color: #3a3b3e !important; 
         font-weight: bold !important;
@@ -113,18 +101,33 @@ st.markdown("""
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
-
     div[data-baseweb="select"] > div:focus-within {
         border-color: #ff4b4b !important; 
         box-shadow: 0 0 0 1px #ff4b4b !important;
     }
+    div[data-baseweb="select"] div { color: #FFFFFF !important; }
+    div[data-baseweb="select"] svg { fill: #FFFFFF !important; }
 
-    div[data-baseweb="select"] div {
-        color: #FFFFFF !important;
+    /* Botón WhatsApp */
+    .btn-wa {
+        background-color: #25D366;
+        color: white !important;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none !important;
+        display: block;
+        font-size: 14px;
+        font-weight: bold;
+        border-radius: 8px;
+        margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    div[data-baseweb="select"] svg {
-        fill: #FFFFFF !important;
-    }
+    .btn-wa:hover { background-color: #128C7E; }
+    
+    /* Tamaño de métricas */
+    div[data-testid="stMetricValue"] { font-size: 28px; color: #1f77b4; }
+    div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
+    div[data-testid="stMetricDelta"] svg { width: 35px !important; height: 35px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -146,15 +149,12 @@ if "show_warning" in st.session_state:
 # 2. CONEXIÓN A LA BASE DE DATOS SUPABASE (POSTGRESQL)
 db_url = os.environ.get("SUPABASE_URL")
 
-# --- CORRECCIÓN --- 
-# Si no encuentra la variable en os.environ, busca en st.secrets
 if not db_url:
     try:
         db_url = st.secrets["SUPABASE_URL"]
     except (FileNotFoundError, KeyError):
         st.error("🚨 Error crítico: No se encontró 'SUPABASE_URL' en las variables de entorno ni en los secretos de Streamlit.")
-        st.info("💡 Asegúrate de configurar la variable de entorno 'SUPABASE_URL' en el panel de control de tu hosting (por ejemplo, en Render).")
-        st.stop() # Detiene la ejecución para evitar el ArgumentError
+        st.stop() 
 
 conn = st.connection("supabase", type="sql", url=db_url)
 
@@ -180,13 +180,14 @@ def verificar_login():
 
     if not st.session_state.autenticado:
         st.markdown("<h2 style='text-align: center;'>⚖️ Baja de insumos</h2>", unsafe_allow_html=True)
-        st.markdown("<h4 style='text-align: center; color: gray;'>Control de Acceso</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align: center; color: gray; margin-bottom: 2rem;'>Control de Acceso</h4>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             with st.form("form_login"):
                 usuario_input = st.text_input("👤 Usuario:")
                 password_input = st.text_input("🔑 Contraseña:", type="password")
+                st.write("") # Espaciador
                 btn_login = st.form_submit_button("Iniciar Sesión", use_container_width=True, type="primary")
                 
                 if btn_login:
