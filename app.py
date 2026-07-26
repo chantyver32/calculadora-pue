@@ -1,4 +1,4 @@
-import streamlit as st
+mport streamlit as st
 import pandas as pd
 from sqlalchemy import text
 from datetime import datetime
@@ -128,6 +128,9 @@ with conn.session as s:
     s.commit()
 
 # ------------------ SISTEMA DE USUARIOS EN SUPABASE ------------------
+de-------------------------------------
+
+# ------------------ SISTEMA DE LOGIN ------------------
 def verificar_login():
     if "autenticado" not in st.session_state:
         st.session_state.autenticado = False
@@ -148,22 +151,18 @@ def verificar_login():
                                           params={"u": usuario_input.strip(), "p": password_input}, ttl=0)
                     
                     if not df_check.empty:
-                        # NUEVO: Mensaje de bienvenida y pausa breve
-                        st.success(f"✅ ¡Bienvenido, {usuario_input.strip()}!")
-                        time.sleep(1.2) # Pausa para que el usuario alcance a leerlo
-                        
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
+                        st.success("✅ ¡Bienvenid@!")
+                        time.sleep(0.8)
                         st.rerun()
                     else:
-                        # NUEVO: Mensaje de error más claro
-                        st.error("❌ Usuario o contraseña no válidos. Por favor, intenta de nuevo.")
+                        st.error("❌ Usuario o contraseña incorrectos.")
         return False
     return True
 
 if not verificar_login():
     st.stop()
-# ---------------------------------------------------------------------
 
 # --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
