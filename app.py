@@ -20,11 +20,12 @@ import streamlit.components.v1 as components
 # 1. CONFIGURACIÓN Y ESTADO
 
 # ------------------ CONFIGURACIÓN GENERAL ------------------
+# st.set_page_config DEBE ser siempre el primer comando de Streamlit
+st.set_page_config(page_title="Insumos", page_icon="⚖️", layout="wide")
+
 with st.spinner('Iniciando sistema Champlitte... 🥐'):
     zona_mx = pytz.timezone('America/Mexico_City')
     fecha_hoy_mx = datetime.now(zona_mx).date()
-    
-    st.set_page_config(page_title="Insumos", page_icon="⚖️", layout="wide")
 
 # Estilos CSS
 st.markdown("""
@@ -143,8 +144,7 @@ def verificar_login():
                     if not df_check.empty:
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
-                        st.success("✅ ¡Bienvenido!")
-                        time.sleep(0.8)
+                        # Quitamos el mensaje de éxito y el sleep para que sea instantáneo y no haya parpadeo de pantalla
                         st.rerun()
                     else:
                         st.error("❌ Usuario o contraseña incorrectos.")
