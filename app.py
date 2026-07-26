@@ -56,21 +56,46 @@ st.markdown("""
     div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
     div[data-testid="stMetricDelta"] svg { width: 35px !important; height: 35px !important; }
 
-    /* EFECTO GRIS CLARO SEMI-TRANSPARENTE PARA LISTAS DESPLEGABLES */
+    /* ESTILO OSCURO PARA LISTAS DESPLEGABLES (Basado en 94378.jpg) */
+    
+    /* 1. Fondo del menú desplegable (opciones) */
     div[data-baseweb="popover"] > div {
-        background-color: rgba(90, 95, 105, 0.6) !important;
-        backdrop-filter: blur(6px) !important;
+        background-color: #262730 !important; /* Fondo oscuro sólido */
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important;
     }
     div[data-baseweb="popover"] ul {
-        background-color: transparent !important; 
+        background-color: #262730 !important; 
     }
     div[data-baseweb="popover"] li {
         background-color: transparent !important;
+        color: #FAFAFA !important; /* Texto en blanco/gris claro */
+        font-size: 14px !important;
     }
     div[data-baseweb="popover"] li:hover {
-        background-color: rgba(255, 255, 255, 0.15) !important; 
+        background-color: rgba(255, 255, 255, 0.1) !important; /* Efecto hover sutil */
+    }
+
+    /* 2. Caja principal del Selectbox (antes de abrir) */
+    div[data-baseweb="select"] > div {
+        background-color: #262730 !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    }
+
+    /* 3. Efecto Focus (borde rojo de Streamlit al hacer clic) */
+    div[data-baseweb="select"] > div:focus-within {
+        border-color: #ff4b4b !important; 
+        box-shadow: 0 0 0 1px #ff4b4b !important;
+    }
+
+    /* 4. Color del texto seleccionado y el ícono de la flecha */
+    div[data-baseweb="select"] div {
+        color: #FAFAFA !important;
+    }
+    div[data-baseweb="select"] svg {
+        fill: #FAFAFA !important;
     }
     </style>
 """, unsafe_allow_html=True)
