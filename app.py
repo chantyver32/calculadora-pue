@@ -127,9 +127,6 @@ with conn.session as s:
                  total_real REAL, stock REAL, diferencia REAL, UNIQUE(sucursal, articulo))'''))
     s.commit()
 
-# ------------------ SISTEMA DE USUARIOS EN SUPABASE ------------------
-de-------------------------------------
-
 # ------------------ SISTEMA DE LOGIN ------------------
 def verificar_login():
     if "autenticado" not in st.session_state:
