@@ -149,7 +149,7 @@ def verificar_login():
                     
                     if not df_check.empty:
                         # NUEVO: Mensaje de bienvenida y pausa breve
-                        st.success(f"✅ ¡Bienvenido, {usuario_input.strip()}!")
+                        st.success(f"✅ ¡Bienvenido!")
                         time.sleep(1.2) # Pausa para que el usuario alcance a leerlo
                         
                         st.session_state.autenticado = True
@@ -157,7 +157,7 @@ def verificar_login():
                         st.rerun()
                     else:
                         # NUEVO: Mensaje de error más claro
-                        st.error("❌ Usuario o contraseña no válidos. Por favor, intenta de nuevo.")
+                        st.error("❌ Usuario o contraseña incorrectos. ")
         return False
     return True
 
