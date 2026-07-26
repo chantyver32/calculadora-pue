@@ -26,7 +26,7 @@ with st.spinner('Iniciando sistema Champlitte... 🥐'):
     zona_mx = pytz.timezone('America/Mexico_City')
     fecha_hoy_mx = datetime.now(zona_mx).date()
 
-# Estilos CSS Modernos (Unificados con Sugeridos y Alertas Flotantes Arriba a la Derecha)
+# Estilos CSS Modernos (Unificados con Sugeridos)
 st.markdown("""
     <style>
     /* Ajuste equilibrado del espacio superior */
@@ -58,19 +58,11 @@ st.markdown("""
         animation: none !important;
     }
 
-    /* MODERNO: Mover las notificaciones (Toasts) y alertas a la parte superior derecha */
-    div[data-testid="stToastContainer"],
-    div[data-testid="stAlert"] {
-        position: fixed !important;
-        top: 2rem !important;
-        right: 2rem !important;
-        z-index: 999999 !important;
-        max-width: 400px !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
-    }
-    
+    /* MODERNO: Mover las notificaciones (Toasts) a la parte superior derecha */
     div[data-testid="stToastContainer"] {
+        top: 2rem !important;
         bottom: auto !important;
+        right: 2rem !important;
     }
     
     /* Listas desplegables - Quitar fondo en seleccionado */
