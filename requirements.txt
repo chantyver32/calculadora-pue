@@ -1,8 +1,7 @@
 streamlit
 pandas
-SpeechRecognition
-python-docx
+sqlalchemy
 pytz
-SQLAlchemy
-psycopg2-binary
-xlsxwriter
+python-docx
+SpeechRecognition
+matplotlib
