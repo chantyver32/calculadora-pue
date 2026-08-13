@@ -5,3 +5,4 @@ pytz
 python-docx
 SpeechRecognition
 matplotlib
+psycopg2-binary
