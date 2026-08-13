@@ -63,7 +63,6 @@ st.markdown("""
     div[data-baseweb="select"] > div {
         background-color: #1a1a1c !important; border-radius: 8px !important; border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
-    /* CAMBIO A BLANCO EN EL BORDE DE FOCO */
     div[data-baseweb="select"] > div:focus-within { border-color: #FFFFFF !important; box-shadow: 0 0 0 1px #FFFFFF !important; }
     div[data-baseweb="select"] div, div[data-baseweb="select"] svg { color: #FFFFFF !important; fill: #FFFFFF !important; }
 
@@ -74,7 +73,6 @@ st.markdown("""
     }
     .btn-wa:hover { background-color: #128C7E; }
     
-    /* CAMBIO A BLANCO EN LAS MÉTRICAS */
     div[data-testid="stMetricValue"] { font-size: 28px; color: #FFFFFF; }
     div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
     </style>
@@ -83,12 +81,6 @@ st.markdown("""
 if "show_toast" in st.session_state:
     st.toast(st.session_state.show_toast)
     del st.session_state.show_toast
-if "show_success" in st.session_state:
-    st.success(st.session_state.show_success)
-    del st.session_state.show_success
-if "show_error" in st.session_state:
-    st.error(st.session_state.show_error)
-    del st.session_state.show_error
 
 # ------------------ 2. CONEXIÓN A SUPABASE ------------------
 db_url = os.environ.get("SUPABASE_URL")
@@ -102,7 +94,6 @@ if not db_url:
 conn = st.connection("supabase", type="sql", url=db_url)
 
 with conn.session as s:
-    # 1. Creación de tablas base (si no existen)
     s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
                  (id SERIAL PRIMARY KEY, sucursal TEXT, fecha_hora TEXT, articulo TEXT, categoria TEXT, 
                  peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)'''))
@@ -118,10 +109,13 @@ with conn.session as s:
     s.execute(text('''CREATE TABLE IF NOT EXISTS usuarios 
                  (id SERIAL PRIMARY KEY, username TEXT, password TEXT)'''))
 
-    # 2. PARCHE: Agrega la columna "categoria" si las tablas ya existían antes
+    # Parchar bases de datos (si no tenían las columnas)
     s.execute(text('ALTER TABLE pesajes_individuales ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE auditoria_stock ADD COLUMN IF NOT EXISTS categoria TEXT;'))
+    
+    # NUEVO PARCHE: Bandera para saber si la Bóveda ya se restó en un corte de caja anterior
+    s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS aplicado_en_corte BOOLEAN DEFAULT TRUE;'))
 
     s.commit()
 
@@ -131,7 +125,6 @@ def verificar_login():
         st.session_state.autenticado = False
 
     if not st.session_state.autenticado:
-        # CAMBIO A BLANCO EN EL TÍTULO
         st.markdown("<h2 style='text-align: center; color: #FFFFFF;'>⚖️ Champlitte Insumos</h2>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align: center; color: gray; margin-bottom: 2rem;'>Control de Acceso</h4>", unsafe_allow_html=True)
         
@@ -188,35 +181,7 @@ with st.sidebar:
     numero_wa = datos_sucursales[sucursal_in]
     st.caption(f"📱WhatsApp: **{numero_wa}**")
 
-    st.divider()
-    st.markdown("### 💾 Respaldo Bóveda")
-    with st.form("form_restaurar_boveda"):
-        uploaded_csv = st.file_uploader("⬆️ Subir Respaldo CSV", type=["csv"])
-        btn_restaurar = st.form_submit_button("🔄 Restaurar Preconteos")
-        if btn_restaurar and uploaded_csv is not None:
-            try:
-                df_upload = pd.read_csv(uploaded_csv)
-                if 'id' in df_upload.columns: df_upload = df_upload.drop(columns=['id'])
-                df_upload['sucursal'] = sucursal_in 
-                df_upload.to_sql("pesajes_guardados", con=conn.engine, if_exists="append", index=False)
-                st.session_state.show_toast = "✅ Respaldo restaurado con éxito"
-                st.rerun()
-            except Exception as e: st.error(f"Error: {e}")
-
-    if st.session_state.get('usuario_actual') == 'admin':
-        st.divider()
-        with st.expander("🚨 Zona de Peligro", expanded=False):
-            st.warning("⚠️ ESTE BOTÓN BORRA TODA LA BASE DE DATOS.")
-            confirmar_borrado = st.checkbox("Confirmar formateo")
-            if st.button("⚠️ ELIMINAR TODO"):
-                if confirmar_borrado:
-                    with conn.session as s:
-                        s.execute(text("DROP TABLE IF EXISTS pesajes_individuales, pesajes_guardados, auditoria_stock CASCADE"))
-                        s.commit()
-                    st.session_state.show_toast = "✅ DB Formateada"
-                    st.rerun()
-
-# ------------------ DICCIONARIO CATEGORIZADO (UNIFICADO) ------------------
+# ------------------ DICCIONARIO CATEGORIZADO ------------------
 productos_por_categoria = {
     "Insumos Venta": {
         "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
@@ -263,13 +228,14 @@ def formato_estricto(valor):
 def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categoria):
     st.markdown(f"### 📦 {articulo}")
     df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
-    df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
+    # Suma solo la Bóveda de HOY que no se ha aplicado al corte
+    df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)", params={"art": articulo, "suc": sucursal}, ttl=0)
     df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
     
     total_real = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
     sumandos = [formato_estricto(val) for val in df_art_combined['resultado_pue']]
     texto_total = f"{' + '.join(sumandos)} = {formato_estricto(total_real)}" if len(sumandos) > 1 else formato_estricto(total_real)
-    st.metric("TOTAL CALCULADO", texto_total)
+    st.metric("TOTAL CALCULADO (Sesión de Hoy)", texto_total)
     
     st.divider()
     df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
@@ -298,8 +264,9 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
     with col2:
         if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
             with conn.session as s:
-                s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula)
-                             SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula 
+                # INSERTAMOS COMO FALSE para que sí se reste del inventario HOY
+                s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte)
+                             SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, FALSE 
                              FROM pesajes_individuales WHERE id = :id"""), {"id": id_registro})
                 s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
                 s.commit()
@@ -354,26 +321,91 @@ with tab_stock:
     categoria_activa = st.selectbox("📂 Seleccione la Categoría de Inventario:", list(productos_por_categoria.keys()))
     productos_dict = productos_por_categoria[categoria_activa]
 
-    df_actual_all = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat GROUP BY articulo", params={"suc": sucursal_in, "cat": categoria_activa}, ttl=0)
-    df_total_pesado = df_actual_all.groupby("articulo", as_index=False)["total_pesado"].sum() if not df_actual_all.empty else df_actual_all.copy()
+    # 1. TRAER TODOS LOS PESAJES (Sin agrupar en SQL para poder armar el desglose 1+1=2 en Python)
+    query_unificada = """
+        SELECT articulo, resultado_pue 
+        FROM (
+            SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+            UNION ALL
+            SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+        ) as combinados
+    """
+    df_raw = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria_activa}, ttl=0)
+    
+    # 2. PROCESAR EL DESGLOSE DE PESAJE EN PANDAS
+    pesajes_data = []
+    if not df_raw.empty:
+        for art, group in df_raw.groupby('articulo'):
+            valores = group['resultado_pue'].tolist()
+            total = truncar_dos_decimales(sum(valores))
+            str_vals = [formato_estricto(v) for v in valores]
+            # Si hay más de un valor, mostramos la suma explícita; si no, solo el valor
+            desglose = f"{' + '.join(str_vals)} = {formato_estricto(total)}" if len(valores) > 1 else formato_estricto(total)
+            pesajes_data.append({"articulo": art, "total_pesado": total, "desglose_pesada": desglose})
+            
+    df_total_pesado = pd.DataFrame(pesajes_data) if pesajes_data else pd.DataFrame(columns=["articulo", "total_pesado", "desglose_pesada"])
+
+    # 3. TRAER STOCK ANTERIOR
     df_auditoria_base = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria_activa}, ttl=0)
 
-    lista_todos_articulos = sorted(list(set(list(productos_dict.keys()) + list(df_auditoria_base['articulo'] if not df_auditoria_base.empty else []))))
+    # 4. CONSTRUIR LISTA MAESTRA DE ARTÍCULOS (Garantiza incluir los "No Enlistados")
+    lista_dict = list(productos_dict.keys())
+    lista_audit = df_auditoria_base['articulo'].tolist() if not df_auditoria_base.empty else []
+    lista_pesados = df_total_pesado['articulo'].tolist() if not df_total_pesado.empty else []
+    
+    # Al unir los 3 conjuntos, cualquier producto nuevo creado a mano aparecerá en la tabla
+    lista_todos_articulos = sorted(list(set(lista_dict + lista_audit + lista_pesados)))
+    
+    # 5. CONSTRUIR EL DATAFRAME FINAL
     df_stock_master = pd.DataFrame({"articulo": lista_todos_articulos})
-    df_stock_master = pd.merge(df_stock_master, df_auditoria_base, on="articulo", how="left") if not df_auditoria_base.empty else df_stock_master.assign(stock=0.0)
-    df_stock_master = pd.merge(df_stock_master, df_total_pesado, on="articulo", how="left").fillna({"total_pesado": 0.0}) if not df_total_pesado.empty else df_stock_master.assign(total_pesado=0.0)
-
+    
+    # Unir Stock Anterior
+    if not df_auditoria_base.empty:
+        df_stock_master = pd.merge(df_stock_master, df_auditoria_base, on="articulo", how="left")
+    else:
+        df_stock_master["stock"] = 0.0
+        
+    # Unir Pesajes
+    if not df_total_pesado.empty:
+        df_stock_master = pd.merge(df_stock_master, df_total_pesado, on="articulo", how="left")
+    else:
+        df_stock_master["total_pesado"] = 0.0
+        df_stock_master["desglose_pesada"] = "0.00"
+        
+    # Llenar vacíos y calcular Stock Actualizado
     df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
+    df_stock_master["total_pesado"] = df_stock_master["total_pesado"].fillna(0.0)
+    df_stock_master["desglose_pesada"] = df_stock_master["desglose_pesada"].fillna("0.00")
+    
     df_stock_master["cantidad_actual"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
-    df_stock_display = df_stock_master[["stock", "total_pesado", "articulo", "cantidad_actual"]].rename(columns={"stock": "Cantidad Anterior", "total_pesado": "Peso Descontado", "articulo": "Producto", "cantidad_actual": "Cantidad Actual"})
+    
+    # 6. DAR FORMATO FINAL DE COLUMNAS (En el orden que solicitaste)
+    df_stock_display = df_stock_master[[
+        "stock", "articulo", "desglose_pesada", "total_pesado", "cantidad_actual"
+    ]].rename(columns={
+        "stock": "Cantidad Anterior", 
+        "articulo": "Producto", 
+        "desglose_pesada": "Cantidad Pesada",
+        "total_pesado": "Cantidad a Restar",
+        "cantidad_actual": "Stock Actualizado"
+    })
 
-    df_editado = st.data_editor(df_stock_display, use_container_width=True, hide_index=True, disabled=["Peso Descontado", "Producto", "Cantidad Actual"], key=f"editor_stock_{categoria_activa}")
+    # Mostrar tabla interactiva (Solo permitimos editar la "Cantidad Anterior")
+    df_editado = st.data_editor(
+        df_stock_display, 
+        use_container_width=True, 
+        hide_index=True, 
+        disabled=["Producto", "Cantidad Pesada", "Cantidad a Restar", "Stock Actualizado"], 
+        key=f"editor_stock_{categoria_activa}"
+    )
 
     if st.button(f"💾 Guardar Cambios ({categoria_activa})", use_container_width=True):
         with conn.session as s:
             for _, row in df_editado.iterrows():
-                s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) VALUES (:suc, :art, :cat, :stk, 0, 0)
-                             ON CONFLICT (sucursal, articulo) DO UPDATE SET stock = EXCLUDED.stock"""), {"suc": sucursal_in, "art": row["Producto"], "cat": categoria_activa, "stk": row["Cantidad Anterior"]})
+                s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
+                             VALUES (:suc, :art, :cat, :stk, 0, 0)
+                             ON CONFLICT (sucursal, articulo) DO UPDATE SET stock = EXCLUDED.stock"""), 
+                             {"suc": sucursal_in, "art": row["Producto"], "cat": categoria_activa, "stk": row["Cantidad Anterior"]})
             s.commit()
         st.session_state.show_toast = f"✅ Stock inicial guardado para {categoria_activa}."
         st.rerun()
@@ -384,9 +416,15 @@ with tab_stock:
             for _, row in df_stock_master[df_stock_master["total_pesado"] > 0].iterrows():
                 s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) VALUES (:suc, :art, :cat, :stk, 0, 0)
                              ON CONFLICT (sucursal, articulo) DO UPDATE SET stock = EXCLUDED.stock"""), {"suc": sucursal_in, "art": row["articulo"], "cat": categoria_activa, "stk": row["cantidad_actual"]})
+            
+            # Borramos lo del día 
             s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa})
+            
+            # ¡LA BÓVEDA NO SE BORRA! Se marca como aplicada para que no te vuelva a restar mañana
+            s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa})
+            
             s.commit()
-        st.session_state.show_toast = f"✅ ¡Actualizado para mañana!"
+        st.session_state.show_toast = f"✅ ¡Actualizado para mañana! La Bóveda se conservó como archivo."
         st.rerun()
 
 # --- TAB 1: REGISTRO, AUDIO Y AUDITORÍA ---
@@ -478,9 +516,9 @@ with tab_calc:
 
     if art_sel:
         st.divider()
-        st.markdown(f"📋 **Historial de {art_sel}**")
+        st.markdown(f"📋 **Historial de Hoy de {art_sel}**")
         df_a = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
-        df_g = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
+        df_g = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         if not df_g.empty: df_g['detalle_formula'] = "[GUARDADO] " + df_g['detalle_formula'].astype(str)
         df_comb = pd.concat([df_a, df_g], ignore_index=True)
         if not df_comb.empty: st.dataframe(df_comb[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
@@ -515,16 +553,18 @@ with tab_historial:
                 with conn.session as s:
                     for sel in sel_prot:
                         id_val = int(sel.split(" | ")[0].replace("ID ", ""))
-                        s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula FROM pesajes_individuales WHERE id = :id"""), {"id": id_val})
+                        s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
+                                          SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, FALSE 
+                                          FROM pesajes_individuales WHERE id = :id"""), {"id": id_val})
                         s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_val})
                     s.commit()
                 st.session_state.show_toast = f"✅ Movidos {len(sel_prot)} a Bóveda."
                 st.rerun()
             
             if not df_guardados.empty:
-                st.markdown("#### 🗃️ Bóveda Actual")
+                st.markdown("#### 🗃️ Archivo Histórico de Bóveda")
                 ed_guardados = st.data_editor(df_guardados, use_container_width=True, num_rows="dynamic", hide_index=True, disabled=df_guardados.columns.tolist(), key="ed_gb")
-                if st.button("💾 Eliminar filas de la Bóveda"):
+                if st.button("💾 Eliminar filas manualmente de la Bóveda"):
                     ids_del_g = set(df_guardados['id']) - set(ed_guardados['id'])
                     if ids_del_g:
                         with conn.session as s:
