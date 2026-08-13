@@ -523,8 +523,6 @@ with tab_calc:
                 with c2: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
         
         st.divider()
-        reemplazar_boveda = st.checkbox("🔄 Es mi total absoluto (Reemplazar Bóveda actual)", help="Marca esta opción si este pesaje es lo ÚNICO que tienes y quieres borrar el pre-conteo anterior de la Bóveda.")
-        
         btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
 
     if btn_save:
@@ -544,23 +542,30 @@ with tab_calc:
             fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
             try:
                 with conn.session as s:
-                    # LÓGICA DE REEMPLAZO ABSOLUTO
-                    if reemplazar_boveda:
+                    # LÓGICA DE ACTUALIZACIÓN AUTOMÁTICA DE BÓVEDA
+                    # 1. Consultar cuánto hay en Bóveda actualmente para este producto
+                    q_bov = text("SELECT COALESCE(SUM(resultado_pue), 0) FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)")
+                    total_boveda = float(s.execute(q_bov, {"art": art_sel, "suc": sucursal_in}).scalar() or 0.0)
+                    
+                    # 2. Si hay bóveda y lo nuevo es menor (o cero), es un consumo directo de lo guardado
+                    if total_boveda > 0 and (resultado < total_boveda or resultado == 0):
+                        # Eliminamos bóvedas anteriores y cualquier registro de piso suelto
                         s.execute(text("DELETE FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)"), {"art": art_sel, "suc": sucursal_in})
                         s.execute(text("DELETE FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc"), {"art": art_sel, "suc": sucursal_in})
                         
+                        # Si no es 0, inyectamos la nueva cantidad actualizada
                         if resultado > 0:
                             s.execute(text("""INSERT INTO pesajes_guardados 
                                          (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
                                          VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df, FALSE)"""),
                                       {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": cat_reg, "pb": peso_bruto if not modo_preconteo else 0, 
                                        "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
-                                       "rp": resultado, "df": "[ACT. DIRECTA] " + formula})
+                                       "rp": resultado, "df": "[AUTO-AJUSTE BÓVEDA] " + formula})
                         s.commit()
-                        st.session_state.show_toast = "✅ Bóveda actualizada y reemplazada con éxito."
+                        st.session_state.show_toast = f"✅ Bóveda auto-ajustada (Se detectó menos cantidad: de {total_boveda} a {resultado})"
                         st.rerun() 
                     
-                    # LÓGICA DE REGISTRO NORMAL
+                    # 3. LÓGICA NORMAL (Si no había bóveda o pesaste MÁS que la bóveda)
                     else:
                         res = s.execute(text("""INSERT INTO pesajes_individuales 
                                      (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
