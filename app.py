@@ -15,6 +15,8 @@ from docx.oxml.ns import qn
 import re  
 import os
 import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 
 # 1. CONFIGURACIÓN Y ESTADO
 st.set_page_config(page_title="Insumos", page_icon="⚖️", layout="wide")
@@ -211,7 +213,6 @@ def generar_word_tarjetas(df):
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Tarjeta con los 4 datos requeridos
         texto_tarjeta = (
             f"Producto: {row_data['producto']}\n"
             f"Cant. Ant: {formato_estricto(row_data['cantidad_anterior'])}\n"
@@ -224,6 +225,47 @@ def generar_word_tarjetas(df):
     doc.save(buffer)
     buffer.seek(0)
     return buffer
+
+def generar_imagen_esquema(df_stock, sucursal):
+    fig, ax = plt.subplots(figsize=(10, max(4, len(df_stock) * 0.4 + 2)), dpi=200)
+    ax.axis('off')
+    
+    # Encabezado estilo Champlitte
+    plt.text(0.5, 0.95, "Champlitte", fontsize=22, fontweight='bold', color='#581825', ha='center', transform=ax.transAxes)
+    plt.text(0.5, 0.91, "PASTELERÍA — INSUMOS", fontsize=11, fontweight='bold', color='#7f8c8d', ha='center', transform=ax.transAxes)
+    plt.text(0.5, 0.87, f"SUCURSAL: {sucursal} | {datetime.now(zona_mx).strftime('%d/%m/%Y - %H:%M')}", fontsize=9, color='#95a5a6', ha='center', transform=ax.transAxes)
+    
+    table_data = []
+    for _, row in df_stock.iterrows():
+        table_data.append([
+            str(row['Producto']),
+            formato_estricto(row['Cantidad Anterior']),
+            formato_estricto(row['Peso Descontado']),
+            formato_estricto(row['Cantidad Actual'])
+        ])
+    
+    columns = ["PRODUCTO", "CANT. ANTERIOR", "PESO DESCONTADO", "CANT. ACTUAL"]
+    
+    table = ax.table(cellText=table_data, colLabels=columns, loc='center', cellLoc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1, 1.4)
+    
+    for key, cell in table.get_celld().items():
+        cell.set_edgecolor('#dcdde1')
+        if key[0] == 0:
+            cell.set_facecolor('#581825')
+            cell.set_text_props(color='white', fontweight='bold')
+        else:
+            cell.set_facecolor('#fdfefe' if key[0] % 2 == 0 else '#f2f4f4')
+            cell.set_text_props(color='#2c3e50')
+            
+    plt.subplots_adjust(top=0.8, bottom=0.1)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', facecolor='white')
+    buf.seek(0)
+    plt.close(fig)
+    return buf
 
 productos = {
     "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
@@ -247,7 +289,7 @@ productos = {
 }
 
 # --- 4. INTERFAZ ---
-tab_stock, tab_calc, tab_historial = st.tabs(["📦 Stock Real", "🧮 Nueva Entrada", "📋 Reportes y Bóveda"])
+tab_stock, tab_calc, tab_historial, tab_visual = st.tabs(["📦 Stock Real", "🧮 Nueva Entrada", "📋 Reportes y Bóveda", "🖼️ Esquema Visual"])
 
 # --- TAB 0: STOCK REAL EDITABLE Y DINÁMICO ---
 with tab_stock:
@@ -280,7 +322,6 @@ with tab_stock:
     df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
     df_stock_master["cantidad_actual"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
 
-    # Estructura requerida: Cantidad Anterior, Peso Descontado, Producto, Cantidad Actual
     df_stock_display = df_stock_master[["stock", "total_pesado", "articulo", "cantidad_actual"]].rename(columns={
         "stock": "Cantidad Anterior",
         "total_pesado": "Peso Descontado",
@@ -308,6 +349,23 @@ with tab_stock:
                           {"suc": sucursal_in, "art": art, "stk": nuevo_stock})
             s.commit()
         st.session_state.show_toast = "✅ Stock inicial actualizado correctamente."
+        st.rerun()
+
+    st.divider()
+    if st.button("🔄 CONVERTIR STOCK ACTUAL EN INVENTARIO REAL PARA MAÑANA", type="primary", use_container_width=True):
+        with conn.session as s:
+            for _, row in df_stock_master.iterrows():
+                art = row["articulo"]
+                nueva_base = row["cantidad_actual"]
+                s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, stock, total_real, diferencia) 
+                             VALUES (:suc, :art, :stk, 0, 0)
+                             ON CONFLICT (sucursal, articulo) DO UPDATE 
+                             SET stock = EXCLUDED.stock"""), 
+                          {"suc": sucursal_in, "art": art, "stk": nueva_base})
+            # Limpiar registros actuales para reiniciar el acumulado de pesaje de mañana
+            s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc"), {"suc": sucursal_in})
+            s.commit()
+        st.session_state.show_toast = "✅ ¡Inventario convertido con éxito para el siguiente día!"
         st.rerun()
 
 # --- TAB 1: REGISTRO ---
@@ -351,7 +409,7 @@ with tab_calc:
             resultado = truncar_dos_decimales(cantidad_directa)
         else:
             tara_total = (0.045 if t_cont else 0) + (t_manual if t_manual else 0)
-            resultado = truncar_dos_dividendos = truncar_dos_decimales((peso_bruto - tara_total) / pue_final)
+            resultado = truncar_dos_decimales((peso_bruto - tara_total) / pue_final)
             formula = f"({peso_bruto}PB - {tara_total}T) / {pue_final}PUE"
 
         fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
@@ -371,7 +429,6 @@ with tab_calc:
 with tab_historial:
     df_guardados = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
     if not df_guardados.empty:
-        # Preparamos los datos combinando con el stock anterior y actual para generar las tarjetas de Word con los 4 campos
         df_stock_base = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
         df_totales = df_guardados.groupby('articulo', as_index=False)['resultado_pue'].sum().rename(columns={'resultado_pue': 'peso_descontado'})
         
@@ -388,3 +445,51 @@ with tab_historial:
         st.download_button("📄 Descargar Tarjetas en Word", data=word_file, file_name=f"Tarjetas_{sucursal_in}.docx", use_container_width=True)
     else:
         st.info("No hay pre-conteos en la bóveda.")
+
+# --- TAB 3: ESQUEMA VISUAL ---
+with tab_visual:
+    st.subheader("🖼️ Esquema Visual de Stock (Insumos)")
+    st.markdown("Generación automática de imagen con el resumen completo de insumos, cantidad anterior, peso descontado y stock actual.")
+
+    # Calcular datos completos actuales para el reporte visual
+    df_actual_all_v = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_individuales WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
+    df_guardados_all_v = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_guardados WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
+    
+    df_total_pesado_v = pd.concat([df_actual_all_v, df_guardados_all_v], ignore_index=True)
+    if not df_total_pesado_v.empty:
+        df_total_pesado_v = df_total_pesado_v.groupby("articulo", as_index=False)["total_pesado"].sum()
+
+    df_auditoria_base_v = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
+
+    lista_todos_v = sorted(list(set(list(productos.keys()) + list(df_auditoria_base_v['articulo'] if not df_auditoria_base_v.empty else []))))
+    df_visual_master = pd.DataFrame({"articulo": lista_todos_v})
+    
+    if not df_auditoria_base_v.empty:
+        df_visual_master = pd.merge(df_visual_master, df_auditoria_base_v, on="articulo", how="left")
+    else:
+        df_visual_master["stock"] = 0.0
+
+    if not df_total_pesado_v.empty:
+        df_visual_master = pd.merge(df_visual_master, df_total_pesado_v, on="articulo", how="left")
+        df_visual_master["total_pesado"] = df_visual_master["total_pesado"].fillna(0.0)
+    else:
+        df_visual_master["total_pesado"] = 0.0
+
+    df_visual_master["stock"] = df_visual_master["stock"].fillna(0.0)
+    df_visual_master["cantidad_actual"] = df_visual_master["stock"] - df_visual_master["total_pesado"]
+
+    df_reporte_visual = df_visual_master[["stock", "total_pesado", "articulo", "cantidad_actual"]].rename(columns={
+        "stock": "Cantidad Anterior",
+        "total_pesado": "Peso Descontado",
+        "articulo": "Producto",
+        "cantidad_actual": "Cantidad Actual"
+    })
+
+    if not df_reporte_visual.empty:
+        img_buffer = generar_imagen_esquema(df_reporte_visual, sucursal_in)
+        st.image(img_buffer, caption=f"Reporte Visual de Insumos - {sucursal_in}", use_container_width=True)
+        
+        url_abrir_wa = f"https://wa.me/{numero_wa}"
+        st.markdown(f'<a href="{url_abrir_wa}" target="_blank" class="btn-wa">💬 ABRIR WHATSAPP (Para enviar reporte)</a>', unsafe_allow_html=True)
+    else:
+        st.info("No hay datos suficientes para generar el esquema visual.")
