@@ -14,7 +14,12 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import re  
 import os
+import gc
 import streamlit.components.v1 as components
+
+# --- OPTIMIZACIÓN DE MEMORIA (Debe ir antes de importar pyplot) ---
+import matplotlib
+matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
 
 # ------------------ 1. CONFIGURACIÓN GENERAL ------------------
@@ -27,7 +32,6 @@ with st.spinner('Iniciando sistema Champlitte... 🥐'):
 st.markdown("""
     <style>
     .block-container { padding-top: 3rem; padding-bottom: 1rem; }
-    .main { background-color: #f5f7f9; }
     
     .stButton > button, 
     .stFormSubmitButton > button { 
@@ -65,7 +69,8 @@ st.markdown("""
     div[data-baseweb="select"] > div {
         background-color: #1a1a1c !important; border-radius: 8px !important; border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
-    div[data-baseweb="select"] > div:focus-within { border-color: #8A1538 !important; box-shadow: 0 0 0 1px #8A1538 !important; }
+    /* CAMBIO A BLANCO EN EL BORDE DE FOCO */
+    div[data-baseweb="select"] > div:focus-within { border-color: #FFFFFF !important; box-shadow: 0 0 0 1px #FFFFFF !important; }
     div[data-baseweb="select"] div, div[data-baseweb="select"] svg { color: #FFFFFF !important; fill: #FFFFFF !important; }
 
     .btn-wa {
@@ -75,7 +80,8 @@ st.markdown("""
     }
     .btn-wa:hover { background-color: #128C7E; }
     
-    div[data-testid="stMetricValue"] { font-size: 28px; color: #8A1538; }
+    /* CAMBIO A BLANCO EN LAS MÉTRICAS */
+    div[data-testid="stMetricValue"] { font-size: 28px; color: #FFFFFF; }
     div[data-testid="stMetricDelta"] { font-size: 30px !important; font-weight: bold !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -102,7 +108,7 @@ if not db_url:
 conn = st.connection("supabase", type="sql", url=db_url)
 
 with conn.session as s:
-    # Agregada columna "categoria" a las tablas para soportar el código 1
+    # 1. Creación de tablas base (si no existen)
     s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
                  (id SERIAL PRIMARY KEY, sucursal TEXT, fecha_hora TEXT, articulo TEXT, categoria TEXT, 
                  peso_bruto REAL, tara REAL, pue REAL, resultado_pue REAL, detalle_formula TEXT)'''))
@@ -117,6 +123,12 @@ with conn.session as s:
     
     s.execute(text('''CREATE TABLE IF NOT EXISTS usuarios 
                  (id SERIAL PRIMARY KEY, username TEXT, password TEXT)'''))
+
+    # 2. PARCHE: Agrega la columna "categoria" si las tablas ya existían antes
+    s.execute(text('ALTER TABLE pesajes_individuales ADD COLUMN IF NOT EXISTS categoria TEXT;'))
+    s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS categoria TEXT;'))
+    s.execute(text('ALTER TABLE auditoria_stock ADD COLUMN IF NOT EXISTS categoria TEXT;'))
+
     s.commit()
 
 # ------------------ SISTEMA DE LOGIN ------------------
@@ -125,7 +137,8 @@ def verificar_login():
         st.session_state.autenticado = False
 
     if not st.session_state.autenticado:
-        st.markdown("<h2 style='text-align: center; color: #8A1538;'>⚖️ Champlitte Insumos</h2>", unsafe_allow_html=True)
+        # CAMBIO A BLANCO EN EL TÍTULO
+        st.markdown("<h2 style='text-align: center; color: #FFFFFF;'>⚖️ Champlitte Insumos</h2>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align: center; color: gray; margin-bottom: 2rem;'>Control de Acceso</h4>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -144,7 +157,6 @@ def verificar_login():
                         st.session_state.show_toast = "✅ ¡Bienvenid@!"
                         st.rerun()
                     else:
-                        # Bypass for testing if db is empty, remove in prod
                         if usuario_input == "admin" and password_input == "admin":
                              st.session_state.autenticado = True
                              st.session_state.usuario_actual = "admin"
@@ -343,6 +355,8 @@ def generar_imagen_esquema(df_stock, sucursal):
     fig_height = max(5.0, len(df_stock) * 0.45 + 3.5) 
     fig, ax = plt.subplots(figsize=(11, fig_height), dpi=200)
     ax.axis('off')
+    
+    # EL COLOR VINO SE MANTIENE AQUÍ ADENTRO
     champlitte_red, light_pink, text_dark = '#8A1538', '#FDF2F4', '#333333'      
     
     fig.text(0.5, 0.93, "Champlitte", fontsize=36, fontweight='bold', color=champlitte_red, ha='center', va='center', family='serif')
@@ -375,7 +389,13 @@ def generar_imagen_esquema(df_stock, sucursal):
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight', facecolor='white', pad_inches=0.4)
     buf.seek(0)
+    
+    # --- LIMPIEZA EXTREMA DE MEMORIA ---
+    fig.clf()
     plt.close(fig)
+    gc.collect()
+    # -----------------------------------
+    
     return buf
 
 # ------------------ 3. INTERFAZ PRINCIPAL (4 TABS) ------------------
