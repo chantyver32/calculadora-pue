@@ -14,13 +14,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import re  
 import os
-import gc
 import streamlit.components.v1 as components
-
-# --- OPTIMIZACIÓN DE MEMORIA (Debe ir antes de importar pyplot) ---
-import matplotlib
-matplotlib.use('Agg') 
-import matplotlib.pyplot as plt
 
 # ------------------ 1. CONFIGURACIÓN GENERAL ------------------
 st.set_page_config(page_title="Insumos Champlitte", page_icon="⚖️", layout="wide")
@@ -351,55 +345,8 @@ def generar_word_tarjetas(df):
     buf.seek(0)
     return buf
 
-def generar_imagen_esquema(df_stock, sucursal):
-    fig_height = max(5.0, len(df_stock) * 0.45 + 3.5) 
-    fig, ax = plt.subplots(figsize=(11, fig_height), dpi=200)
-    ax.axis('off')
-    
-    # EL COLOR VINO SE MANTIENE AQUÍ ADENTRO
-    champlitte_red, light_pink, text_dark = '#8A1538', '#FDF2F4', '#333333'      
-    
-    fig.text(0.5, 0.93, "Champlitte", fontsize=36, fontweight='bold', color=champlitte_red, ha='center', va='center', family='serif')
-    fig.text(0.5, 0.89, "P A S T E L E R Í A", fontsize=10, fontweight='bold', color=text_dark, ha='center', va='center')
-    fig.text(0.5, 0.85, "CONTROL GENERAL DE INVENTARIO", fontsize=18, fontweight='bold', color=champlitte_red, ha='center', va='center')
-    
-    fecha_actual = datetime.now(zona_mx).strftime('%d %m %Y - %H:%M')
-    fig.text(0.5, 0.81, f"SUCURSAL: {sucursal} | {fecha_actual}", fontsize=9, fontweight='bold', color='#7f8c8d', ha='center', va='center')
-    
-    columns = ["PRODUCTO", "CATEGORÍA", "CANT. ANT.", "PESO OBT.", "STOCK ACT."]
-    table_data = [[f"  {r['Producto']}", str(r['Categoría']), formato_estricto(r['Cantidad Anterior']), formato_estricto(r['Peso Obtenido']), formato_estricto(r['Stock Actual'])] for _, r in df_stock.iterrows()]
-        
-    table = ax.table(cellText=table_data, colLabels=columns, loc='center', cellLoc='center')
-    table.auto_set_font_size(False)
-    table.set_fontsize(9)
-    table.scale(1, 2.0) 
-    
-    for key, cell in table.get_celld().items():
-        cell.set_edgecolor('white'); cell.set_linewidth(2)
-        if key[0] == 0: 
-            cell.set_facecolor(champlitte_red); cell.set_text_props(color='white', fontweight='bold', fontsize=8.5)
-            if key[1] == 0: cell.set_text_props(ha='left')
-        else: 
-            cell.set_facecolor('white' if key[0] % 2 == 1 else light_pink)
-            if key[1] == 0: cell.set_text_props(color=text_dark, ha='left')
-            elif key[1] == 4: cell.set_text_props(color=champlitte_red, fontweight='bold')
-            else: cell.set_text_props(color=text_dark, fontweight='bold')
-                
-    plt.subplots_adjust(top=0.75, bottom=0.05) 
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', facecolor='white', pad_inches=0.4)
-    buf.seek(0)
-    
-    # --- LIMPIEZA EXTREMA DE MEMORIA ---
-    fig.clf()
-    plt.close(fig)
-    gc.collect()
-    # -----------------------------------
-    
-    return buf
-
-# ------------------ 3. INTERFAZ PRINCIPAL (4 TABS) ------------------
-tab_stock, tab_calc, tab_historial, tab_visual = st.tabs(["📦 Stock Real", "🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda", "🖼️ Esquema Visual"])
+# ------------------ 3. INTERFAZ PRINCIPAL (3 TABS) ------------------
+tab_stock, tab_calc, tab_historial = st.tabs(["📦 Stock Real", "🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
 
 # --- TAB 0: STOCK REAL POR CATEGORÍAS ---
 with tab_stock:
@@ -586,32 +533,6 @@ with tab_historial:
                         st.session_state.show_toast = f"✅ Eliminados {len(ids_del_g)} guardados."
                         st.rerun()
     else: st.info("No hay pesajes registrados.")
-
-# --- TAB 3: ESQUEMA VISUAL GLOBAL ---
-with tab_visual:
-    st.subheader("🖼️ Esquema Visual Global de Insumos")
-    df_actual_all_v = conn.query("SELECT articulo, categoria, SUM(resultado_pue) as total_pesado FROM pesajes_individuales WHERE sucursal = :suc GROUP BY articulo, categoria", params={"suc": sucursal_in}, ttl=0)
-    df_auditoria_base_v = conn.query("SELECT articulo, categoria, stock FROM auditoria_stock WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
-
-    filas_visual = []
-    for cat_nombre, prod_map in productos_por_categoria.items():
-        for art_nombre in prod_map.keys():
-            stk_row = df_auditoria_base_v[(df_auditoria_base_v['articulo'] == art_nombre) & (df_auditoria_base_v['categoria'] == cat_nombre)]
-            stock_val = float(stk_row['stock'].values[0]) if not stk_row.empty else 0.0
-
-            pes_row = df_actual_all_v[(df_actual_all_v['articulo'] == art_nombre) & (df_actual_all_v['categoria'] == cat_nombre)]
-            pesado_val = float(pes_row['total_pesado'].values[0]) if not pes_row.empty else 0.0
-
-            filas_visual.append({
-                "Producto": art_nombre, "Categoría": cat_nombre, 
-                "Cantidad Anterior": stock_val, "Peso Obtenido": pesado_val, "Stock Actual": stock_val - pesado_val
-            })
-
-    df_reporte_visual = pd.DataFrame(filas_visual)
-    if not df_reporte_visual.empty:
-        st.image(generar_imagen_esquema(df_reporte_visual, sucursal_in), use_container_width=True)
-        st.markdown(f'<a href="https://wa.me/{numero_wa}" target="_blank" class="btn-wa">📞 Enviar Reporte a {sucursal_in}</a>', unsafe_allow_html=True)
-    else: st.info("Faltan datos para el esquema visual.")
 
 # --- AUTO-FOCO CON JAVASCRIPT ---
 components.html("""
