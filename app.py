@@ -295,7 +295,6 @@ with tab_stock:
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático conforme vayas pesando.")
 
-    # NOTA: Solo se consideran los pesajes individuales (pesajes_individuales) para el descuento diario. La bóveda queda intacta.
     df_actual_all = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_individuales WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
     
     df_total_pesado = df_actual_all.copy()
@@ -353,7 +352,9 @@ with tab_stock:
     st.divider()
     if st.button("🔄 CONVERTIR STOCK ACTUAL EN INVENTARIO REAL PARA MAÑANA", type="primary", use_container_width=True):
         with conn.session as s:
-            for _, row in df_stock_master.iterrows():
+            # ÚNICAMENTE actualizamos la base con el stock actual de los productos que tuvieron pesajes (> 0)
+            articulos_con_pesaje = df_stock_master[df_stock_master["total_pesado"] > 0]
+            for _, row in articulos_con_pesaje.iterrows():
                 art = row["articulo"]
                 nueva_base = row["cantidad_actual"]
                 s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, stock, total_real, diferencia) 
@@ -361,10 +362,11 @@ with tab_stock:
                              ON CONFLICT (sucursal, articulo) DO UPDATE 
                              SET stock = EXCLUDED.stock"""), 
                           {"suc": sucursal_in, "art": art, "stk": nueva_base})
+            
             # Limpiar únicamente los pesajes individuales para que el peso descontado vuelva a 0, sin tocar la bóveda
             s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc"), {"suc": sucursal_in})
             s.commit()
-        st.session_state.show_toast = "✅ ¡Inventario convertido con éxito para el siguiente día y pesajes reiniciados a 0!"
+        st.session_state.show_toast = "✅ ¡Inventario convertido para mañana (solo productos pesados) y pesajes reiniciados a 0!"
         st.rerun()
 
 # --- TAB 1: REGISTRO ---
