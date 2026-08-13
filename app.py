@@ -359,53 +359,41 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal):
 def generar_word_tarjetas(df):
     doc = Document()
     for section in doc.sections:
-        # Configurar Tamaño Carta (8.5 x 11 pulgadas = 21.59 x 27.94 cm)
         section.page_width = Cm(21.59)
         section.page_height = Cm(27.94)
-        
-        # Margen general de 1.5 cm
         section.top_margin = Cm(1.5)
         section.bottom_margin = Cm(1.5)
         section.left_margin = Cm(1.5)
         section.right_margin = Cm(1.5)
         
-    # Columnas: Con margen de 1.5cm, quedan 18.59cm utilizables.
-    # Tarjetas de 6 cm -> Caben perfectamente 3 columnas (18 cm).
     cols = 3
     rows = (len(df) + cols - 1) // cols
     if rows == 0: rows = 1
     
     table = doc.add_table(rows=rows, cols=cols)
     
-    # ---------------------------------------------------------
-    # Inyectar XML para crear bordes punteados en toda la tabla
-    # ---------------------------------------------------------
     tbl = table._tbl
     tblPr = tbl.tblPr
     tblBorders = OxmlElement('w:tblBorders')
     
-    # Aplicamos estilo 'dashed' (línea punteada para recortar) a todos los bordes
     for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
         border_el = OxmlElement(f'w:{edge}')
         border_el.set(qn('w:val'), 'dashed')  
-        border_el.set(qn('w:sz'), '4')        # Grosor de la línea
+        border_el.set(qn('w:sz'), '4')        
         border_el.set(qn('w:space'), '0')
-        border_el.set(qn('w:color'), '000000') # Negro
+        border_el.set(qn('w:color'), '000000') 
         tblBorders.append(border_el)
     tblPr.append(tblBorders)
-    # ---------------------------------------------------------
     
     for idx, row_data in df.iterrows():
         r = idx // cols
         c_idx = idx % cols
         cell = table.cell(r, c_idx)
         
-        # Dimensiones de la celda (tarjeta): 6 cm de ancho x 4 cm de alto
         cell.width = Cm(6)
         table.rows[r].height = Cm(4)
         table.rows[r].height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
         
-        # Centrado Vertical del contenido de la celda
         tc = cell._tc
         tcPr = tc.get_or_add_tcPr()
         tcVAlign = OxmlElement('w:vAlign')
@@ -415,12 +403,10 @@ def generar_word_tarjetas(df):
         articulo = str(row_data['articulo'])
         resultado_str = formato_estricto(row_data['resultado_pue'])
         
-        # Quitamos ".00" si el producto es una pieza (PZA, PZAS)
         if "PZA" in articulo.upper():
             if resultado_str.endswith(".00"):
                 resultado_str = resultado_str[:-3]
         
-        # Textos internos
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
@@ -428,7 +414,6 @@ def generar_word_tarjetas(df):
         run1.font.size = Pt(8)
         run1.bold = True
         
-        # Insertamos el número directamente, sin la palabra "Total: "
         run2 = p.add_run(f"\n{resultado_str}")
         run2.font.size = Pt(12)
         run2.bold = True
@@ -460,8 +445,57 @@ productos = {
     "ESCURRIDOR POR PZA M": 1.0, "RECOGEDOR POR PZA M": 1.0, "MECHUDO POR PZA A": 1.0,
 }
 
-# 4. INTERFAZ
-tab_calc, tab_historial = st.tabs(["🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
+# 4. INTERFAZ (Actualizada con la pestaña de Stock Real)
+tab_stock, tab_calc, tab_historial = st.tabs(["📦 Stock Real & Inventario", "🧮 Nueva Entrada & Auditoría", "📋 Reportes y Bóveda"])
+
+# --- TAB 0: STOCK REAL Y LISTADOS DINÁMICOS ---
+with tab_stock:
+    st.subheader("📦 Control de Stock Real en Tiempo Real")
+    st.markdown("Listado ordenado de productos donde el inventario real se actualiza automáticamente conforme se registran los pesajes.")
+
+    df_actual_all = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_individuales WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
+    df_guardados_all = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_guardados WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
+    
+    df_total_pesado = pd.concat([df_actual_all, df_guardados_all], ignore_index=True)
+    if not df_total_pesado.empty:
+        df_total_pesado = df_total_pesado.groupby("articulo", as_index=False)["total_pesado"].sum()
+
+    df_auditoria_base = conn.query("SELECT articulo, stock, total_real, diferencia FROM auditoria_stock WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
+
+    lista_todos_articulos = sorted(list(set(list(productos.keys()) + list(df_auditoria_base['articulo'] if not df_auditoria_base.empty else []))))
+    
+    df_stock_master = pd.DataFrame({"articulo": lista_todos_articulos})
+    
+    if not df_auditoria_base.empty:
+        df_stock_master = pd.merge(df_stock_master, df_auditoria_base, on="articulo", how="left")
+    else:
+        df_stock_master["stock"] = 0.0
+        df_stock_master["total_real"] = 0.0
+        df_stock_master["diferencia"] = 0.0
+
+    if not df_total_pesado.empty:
+        df_stock_master = pd.merge(df_stock_master, df_total_pesado, on="articulo", how="left")
+        df_stock_master["total_pesado"] = df_stock_master["total_pesado"].fillna(0.0)
+    else:
+        df_stock_master["total_pesado"] = 0.0
+
+    df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
+    df_stock_master["stock_real_actual"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
+
+    df_stock_display = df_stock_master[["articulo", "stock", "total_pesado", "stock_real_actual"]].rename(columns={
+        "articulo": "Artículo",
+        "stock": "Stock Inicial / Teórico",
+        "total_pesado": "Total Pesado / Descontado",
+        "stock_real_actual": "Stock Real Actual"
+    })
+
+    st.dataframe(
+        df_stock_display,
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    st.info("💡 Cada vez que registres un pesaje en la pestaña siguiente, el valor 'Total Pesado' aumentará y el 'Stock Real Actual' se restará de forma automática.")
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
 with tab_calc:
@@ -603,16 +637,12 @@ with tab_calc:
                     id_recien_creado = result.fetchone()[0]
                     s.commit()
                     
-                # POP-UP CON SUMATORIA Y AUDITORÍA
                 mostrar_popup_exito(id_recien_creado, art_sel, resultado, sucursal_in)
             except Exception as e:
                 st.error(f"Error al guardar en base de datos: {e}")
         else:
             st.error("❌ Error: Revisa que el Nombre, el Peso Unitario y el Peso de Báscula estén correctos.")
 
-    # -------------------------------------------------------------
-    # MOSTRAR SOLO 2 COLUMNAS EN EL HISTORIAL (Operación, Cantidad)
-    # -------------------------------------------------------------
     if art_sel:
         st.divider()
         st.markdown(f"📋 **Historial de {art_sel}**")
@@ -626,7 +656,6 @@ with tab_calc:
         df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
         
         if not df_art_combined.empty:
-            # Aquí seleccionamos solo las 2 columnas requeridas y las renombramos
             st.dataframe(df_art_combined[['detalle_formula', 'resultado_pue']].rename(columns={
                 'detalle_formula': 'Operación',
                 'resultado_pue': 'Cantidad'
