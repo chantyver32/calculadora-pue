@@ -230,7 +230,6 @@ def generar_imagen_esquema(df_stock, sucursal):
     fig, ax = plt.subplots(figsize=(10, max(4, len(df_stock) * 0.4 + 2)), dpi=200)
     ax.axis('off')
     
-    # Encabezado estilo Champlitte
     plt.text(0.5, 0.95, "Champlitte", fontsize=22, fontweight='bold', color='#581825', ha='center', transform=ax.transAxes)
     plt.text(0.5, 0.91, "PASTELERÍA — INSUMOS", fontsize=11, fontweight='bold', color='#7f8c8d', ha='center', transform=ax.transAxes)
     plt.text(0.5, 0.87, f"SUCURSAL: {sucursal} | {datetime.now(zona_mx).strftime('%d/%m/%Y - %H:%M')}", fontsize=9, color='#95a5a6', ha='center', transform=ax.transAxes)
@@ -296,10 +295,10 @@ with tab_stock:
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático conforme vayas pesando.")
 
+    # NOTA: Solo se consideran los pesajes individuales (pesajes_individuales) para el descuento diario. La bóveda queda intacta.
     df_actual_all = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_individuales WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
-    df_guardados_all = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_guardados WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
     
-    df_total_pesado = pd.concat([df_actual_all, df_guardados_all], ignore_index=True)
+    df_total_pesado = df_actual_all.copy()
     if not df_total_pesado.empty:
         df_total_pesado = df_total_pesado.groupby("articulo", as_index=False)["total_pesado"].sum()
 
@@ -362,10 +361,10 @@ with tab_stock:
                              ON CONFLICT (sucursal, articulo) DO UPDATE 
                              SET stock = EXCLUDED.stock"""), 
                           {"suc": sucursal_in, "art": art, "stk": nueva_base})
-            # Limpiar registros actuales para reiniciar el acumulado de pesaje de mañana
+            # Limpiar únicamente los pesajes individuales para que el peso descontado vuelva a 0, sin tocar la bóveda
             s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc"), {"suc": sucursal_in})
             s.commit()
-        st.session_state.show_toast = "✅ ¡Inventario convertido con éxito para el siguiente día!"
+        st.session_state.show_toast = "✅ ¡Inventario convertido con éxito para el siguiente día y pesajes reiniciados a 0!"
         st.rerun()
 
 # --- TAB 1: REGISTRO ---
@@ -451,11 +450,9 @@ with tab_visual:
     st.subheader("🖼️ Esquema Visual de Stock (Insumos)")
     st.markdown("Generación automática de imagen con el resumen completo de insumos, cantidad anterior, peso descontado y stock actual.")
 
-    # Calcular datos completos actuales para el reporte visual
     df_actual_all_v = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_individuales WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
-    df_guardados_all_v = conn.query("SELECT articulo, SUM(resultado_pue) as total_pesado FROM pesajes_guardados WHERE sucursal = :suc GROUP BY articulo", params={"suc": sucursal_in}, ttl=0)
     
-    df_total_pesado_v = pd.concat([df_actual_all_v, df_guardados_all_v], ignore_index=True)
+    df_total_pesado_v = df_actual_all_v.copy()
     if not df_total_pesado_v.empty:
         df_total_pesado_v = df_total_pesado_v.groupby("articulo", as_index=False)["total_pesado"].sum()
 
