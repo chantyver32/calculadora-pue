@@ -455,29 +455,58 @@ with tab_stock:
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
 with tab_calc:
-    cat_reg = st.selectbox("📂 Seleccione Categoría de Registro:", list(productos_por_categoria.keys()), key="cat_reg")
-    productos_dict_reg = productos_por_categoria[cat_reg]
+    orden_categorias = ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]
+    orden_ubicaciones = ["Bodega", "Piso de Venta"]
     
-    # --- Estado para avance automático e ubicación ---
-    if "auto_index" not in st.session_state:
+    # --- Estado para avance automático y flujo de trabajo ---
+    if "auto_index" not in st.session_state: st.session_state.auto_index = 0
+    if "cat_activa" not in st.session_state: st.session_state.cat_activa = orden_categorias[0]
+    if "ubi_activa" not in st.session_state: st.session_state.ubi_activa = orden_ubicaciones[0]
+
+    def reset_index():
         st.session_state.auto_index = 0
-    if "ubicacion_pesaje" not in st.session_state:
-        st.session_state.ubicacion_pesaje = "Bodega"
-        
-    st.session_state.ubicacion_pesaje = st.radio(
-        "📍 Ubicación del pesaje:", 
-        ["Bodega", "Piso de Venta"], 
-        horizontal=True, 
-        index=["Bodega", "Piso de Venta"].index(st.session_state.ubicacion_pesaje)
+
+    cat_reg = st.selectbox(
+        "📂 Seleccione Categoría de Registro:", 
+        orden_categorias, 
+        key="cat_activa",
+        on_change=reset_index
     )
     
+    ubicacion_pesaje = st.radio(
+        "📍 Ubicación del pesaje:", 
+        orden_ubicaciones, 
+        horizontal=True, 
+        key="ubi_activa",
+        on_change=reset_index
+    )
+    
+    productos_dict_reg = productos_por_categoria[cat_reg]
     opciones = sorted(productos_dict_reg.keys())
     
+    def avanzar_flujo():
+        if st.session_state.auto_index < len(opciones) - 1:
+            st.session_state.auto_index += 1
+        else:
+            st.session_state.auto_index = 0
+            idx_cat = orden_categorias.index(st.session_state.cat_activa)
+            if idx_cat < len(orden_categorias) - 1:
+                st.session_state.cat_activa = orden_categorias[idx_cat + 1]
+                st.session_state.show_toast = f"🔄 Cambiando a categoría: {st.session_state.cat_activa}"
+            else:
+                st.session_state.cat_activa = orden_categorias[0]
+                idx_ubi = orden_ubicaciones.index(st.session_state.ubi_activa)
+                if idx_ubi < len(orden_ubicaciones) - 1:
+                    st.session_state.ubi_activa = orden_ubicaciones[idx_ubi + 1]
+                    st.session_state.show_toast = f"🔄 Cambiando a ubicación: {st.session_state.ubi_activa}"
+                else:
+                    st.session_state.show_toast = "🎉 ¡Recorrido completo finalizado!"
+                    st.session_state.ubi_activa = orden_ubicaciones[0]
+
     modo_seleccionado = st.selectbox("⚙️ Seleccione el Modo de Registro:", ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"], index=0)
     nuevo_art, modo_preconteo = (modo_seleccionado == "Artículo NO listado"), (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
     
     if not nuevo_art:
-        # Lógica de auto-avance
         current_index = st.session_state.auto_index
         if current_index >= len(opciones): current_index = 0 
         
@@ -494,7 +523,7 @@ with tab_calc:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
             cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=None, step=1.0, placeholder="Ej. 50")
             peso_bruto, tara_total = 0.0, 0.0
-            formula = f"[{st.session_state.ubicacion_pesaje.upper()}] CONTEO MANUAL DIRECTO"
+            formula = f"[{ubicacion_pesaje.upper()}] CONTEO MANUAL DIRECTO"
         else:
             col1, col2 = st.columns([3, 1])
             with col1:
@@ -514,10 +543,7 @@ with tab_calc:
 
     if btn_skip:
         if not nuevo_art:
-            if st.session_state.auto_index < len(opciones) - 1:
-                st.session_state.auto_index += 1
-            else:
-                st.session_state.auto_index = 0
+            avanzar_flujo()
         st.rerun()
 
     if btn_save:
@@ -531,7 +557,7 @@ with tab_calc:
                 tara_total = (0.045 if t_cont else 0) + (t_manual if t_manual is not None else 0.0)
                 is_tinta = "TINTA" in str(art_sel).upper(); offset = 0.030 if is_tinta else 0.0
                 resultado = truncar_dos_decimales(((peso_bruto - tara_total) - offset) / pue_final)
-                formula = f"[{st.session_state.ubicacion_pesaje.upper()}] ({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
+                formula = f"[{ubicacion_pesaje.upper()}] ({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
 
         if datos_listos:
             fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
@@ -554,10 +580,8 @@ with tab_calc:
                                        "rp": resultado, "df": "[AUTO-AJUSTE BÓVEDA] " + formula})
                         s.commit()
                         
-                        # Avance Automático
                         if not nuevo_art:
-                            if st.session_state.auto_index < len(opciones) - 1: st.session_state.auto_index += 1
-                            else: st.session_state.auto_index = 0
+                            avanzar_flujo()
                             
                         st.session_state.show_toast = f"✅ Bóveda auto-ajustada (Se detectó menos cantidad: de {total_boveda} a {resultado})"
                         st.rerun() 
@@ -572,10 +596,8 @@ with tab_calc:
                         id_recien = res.fetchone()[0]
                         s.commit()
                         
-                        # Avance Automático
                         if not nuevo_art:
-                            if st.session_state.auto_index < len(opciones) - 1: st.session_state.auto_index += 1
-                            else: st.session_state.auto_index = 0
+                            avanzar_flujo()
                             
                         mostrar_popup_exito(id_recien, art_sel, resultado, sucursal_in, cat_reg)
             except Exception as e: st.error(f"Error al guardar: {e}")
