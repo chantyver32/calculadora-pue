@@ -543,11 +543,11 @@ with tab_calc:
         
         st.divider()
         
-        # 2. Todos los botones de confirmación centrados y apilados
+        # 2. Todos los botones de confirmación centrados y expandidos
         col_izq, col_centro, col_der = st.columns([1, 2, 1])
         with col_centro:
-            btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary")
-            btn_skip = st.form_submit_button("⏭️ OMITIR")
+            btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary", use_container_width=True)
+            btn_skip = st.form_submit_button("⏭️ OMITIR", use_container_width=True)
 
     if btn_skip:
         if not nuevo_art:
