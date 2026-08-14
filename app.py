@@ -349,8 +349,8 @@ tab_stock, tab_calc, tab_historial = st.tabs(["📦 Stock Real", "🧮 Nueva Ent
 with tab_stock:
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     
-    categoria_activa = st.selectbox("📂 Seleccione la Categoría de Inventario:", list(productos_por_categoria.keys()))
-    productos_dict = productos_por_categoria[categoria_activa]
+    categoria_activa_stock = st.selectbox("📂 Seleccione la Categoría de Inventario:", list(productos_por_categoria.keys()), key="cat_stock")
+    productos_dict_stock = productos_por_categoria[categoria_activa_stock]
     
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
 
@@ -363,7 +363,7 @@ with tab_stock:
             SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
         ) as combinados
     """
-    df_raw = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria_activa}, ttl=0)
+    df_raw = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria_activa_stock}, ttl=0)
     
     pesajes_data = []
     if not df_raw.empty:
@@ -376,9 +376,9 @@ with tab_stock:
             
     df_total_pesado = pd.DataFrame(pesajes_data) if pesajes_data else pd.DataFrame(columns=["articulo", "total_pesado", "desglose_pesada"])
 
-    df_auditoria_base = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria_activa}, ttl=0)
+    df_auditoria_base = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria_activa_stock}, ttl=0)
 
-    lista_dict = list(productos_dict.keys())
+    lista_dict = list(productos_dict_stock.keys())
     lista_audit = df_auditoria_base['articulo'].tolist() if not df_auditoria_base.empty else []
     lista_pesados = df_total_pesado['articulo'].tolist() if not df_total_pesado.empty else []
     lista_todos_articulos = sorted(list(set(lista_dict + lista_audit + lista_pesados)))
@@ -416,10 +416,10 @@ with tab_stock:
         use_container_width=True,
         hide_index=True,
         disabled=["Producto", "Cantidad Pesada", "Cantidad a Restar", "Stock Actualizado"],
-        key=f"editor_stock_real_{categoria_activa}"
+        key=f"editor_stock_real_{categoria_activa_stock}"
     )
 
-    if st.button(f"💾 Guardar Cambios de Stock Inicial ({categoria_activa})", use_container_width=True):
+    if st.button(f"💾 Guardar Cambios de Stock Inicial ({categoria_activa_stock})", use_container_width=True):
         with conn.session as s:
             for _, row in df_editado.iterrows():
                 art = row["Producto"]
@@ -428,13 +428,13 @@ with tab_stock:
                              VALUES (:suc, :art, :cat, :stk, 0, 0)
                              ON CONFLICT (sucursal, articulo) DO UPDATE 
                              SET stock = EXCLUDED.stock"""), 
-                          {"suc": sucursal_in, "art": art, "cat": categoria_activa, "stk": nuevo_stock})
+                          {"suc": sucursal_in, "art": art, "cat": categoria_activa_stock, "stk": nuevo_stock})
             s.commit()
         st.session_state.show_toast = "✅ Stock inicial actualizado correctamente."
         st.rerun()
 
     st.divider()
-    if st.button(f"🔄 CONVERTIR STOCK DE {categoria_activa.upper()} PARA MAÑANA", type="primary", use_container_width=True):
+    if st.button(f"🔄 CONVERTIR STOCK DE {categoria_activa_stock.upper()} PARA MAÑANA", type="primary", use_container_width=True):
         with conn.session as s:
             articulos_con_pesaje = df_stock_master[df_stock_master["total_pesado"] > 0]
             for _, row in articulos_con_pesaje.iterrows():
@@ -444,13 +444,13 @@ with tab_stock:
                              VALUES (:suc, :art, :cat, :stk, 0, 0)
                              ON CONFLICT (sucursal, articulo) DO UPDATE 
                              SET stock = EXCLUDED.stock"""), 
-                          {"suc": sucursal_in, "art": art, "cat": categoria_activa, "stk": nueva_base})
+                          {"suc": sucursal_in, "art": art, "cat": categoria_activa_stock, "stk": nueva_base})
             
-            s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa})
-            s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa})
+            s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa_stock})
+            s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa_stock})
             s.commit()
             
-        st.session_state.show_toast = f"✅ ¡Inventario convertido para mañana ({categoria_activa})!"
+        st.session_state.show_toast = f"✅ ¡Inventario convertido para mañana ({categoria_activa_stock})!"
         st.rerun()
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
@@ -458,88 +458,89 @@ with tab_calc:
     orden_categorias = ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]
     orden_ubicaciones = ["Bodega", "Piso de Venta"]
     
-    # --- Estado para avance automático y flujo de trabajo ---
+    # Estados desvinculados de los widgets para evitar el error de Streamlit
+    if "cat_idx" not in st.session_state: st.session_state.cat_idx = 0
+    if "ubi_idx" not in st.session_state: st.session_state.ubi_idx = 0
     if "auto_index" not in st.session_state: st.session_state.auto_index = 0
-    if "cat_activa" not in st.session_state: st.session_state.cat_activa = orden_categorias[0]
-    if "ubi_activa" not in st.session_state: st.session_state.ubi_activa = orden_ubicaciones[0]
 
-    def reset_index():
-        st.session_state.auto_index = 0
+    # 1. Configuración oculta por default en un expander
+    with st.expander("⚙️ Ajustes de Pesaje (Categoría, Ubicación, Modo)", expanded=False):
+        new_cat = st.selectbox("📂 Seleccione Categoría:", orden_categorias, index=st.session_state.cat_idx)
+        new_ubi = st.radio("📍 Ubicación del pesaje:", orden_ubicaciones, index=st.session_state.ubi_idx, horizontal=True)
+        modo_seleccionado = st.selectbox("⚙️ Seleccione el Modo:", ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"], index=0)
 
-    cat_reg = st.selectbox(
-        "📂 Seleccione Categoría de Registro:", 
-        orden_categorias, 
-        key="cat_activa",
-        on_change=reset_index
-    )
+        # Si el usuario cambia manualmente el menú, actualizamos el estado y reiniciamos el contador
+        if new_cat != orden_categorias[st.session_state.cat_idx]:
+            st.session_state.cat_idx = orden_categorias.index(new_cat)
+            st.session_state.auto_index = 0
+            st.rerun()
+        if new_ubi != orden_ubicaciones[st.session_state.ubi_idx]:
+            st.session_state.ubi_idx = orden_ubicaciones.index(new_ubi)
+            st.session_state.auto_index = 0
+            st.rerun()
+
+    categoria_actual = orden_categorias[st.session_state.cat_idx]
+    ubicacion_actual = orden_ubicaciones[st.session_state.ubi_idx]
     
-    ubicacion_pesaje = st.radio(
-        "📍 Ubicación del pesaje:", 
-        orden_ubicaciones, 
-        horizontal=True, 
-        key="ubi_activa",
-        on_change=reset_index
-    )
-    
-    productos_dict_reg = productos_por_categoria[cat_reg]
+    productos_dict_reg = productos_por_categoria[categoria_actual]
     opciones = sorted(productos_dict_reg.keys())
     
+    # Función maestra de avance
     def avanzar_flujo():
         if st.session_state.auto_index < len(opciones) - 1:
             st.session_state.auto_index += 1
         else:
             st.session_state.auto_index = 0
-            idx_cat = orden_categorias.index(st.session_state.cat_activa)
-            if idx_cat < len(orden_categorias) - 1:
-                st.session_state.cat_activa = orden_categorias[idx_cat + 1]
-                st.session_state.show_toast = f"🔄 Cambiando a categoría: {st.session_state.cat_activa}"
+            if st.session_state.cat_idx < len(orden_categorias) - 1:
+                st.session_state.cat_idx += 1
+                st.session_state.show_toast = f"🔄 Cambiando a categoría: {orden_categorias[st.session_state.cat_idx]}"
             else:
-                st.session_state.cat_activa = orden_categorias[0]
-                idx_ubi = orden_ubicaciones.index(st.session_state.ubi_activa)
-                if idx_ubi < len(orden_ubicaciones) - 1:
-                    st.session_state.ubi_activa = orden_ubicaciones[idx_ubi + 1]
-                    st.session_state.show_toast = f"🔄 Cambiando a ubicación: {st.session_state.ubi_activa}"
+                st.session_state.cat_idx = 0
+                if st.session_state.ubi_idx < len(orden_ubicaciones) - 1:
+                    st.session_state.ubi_idx += 1
+                    st.session_state.show_toast = f"🔄 Cambiando a ubicación: {orden_ubicaciones[st.session_state.ubi_idx]}"
                 else:
                     st.session_state.show_toast = "🎉 ¡Recorrido completo finalizado!"
-                    st.session_state.ubi_activa = orden_ubicaciones[0]
+                    st.session_state.ubi_idx = 0
 
-    modo_seleccionado = st.selectbox("⚙️ Seleccione el Modo de Registro:", ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"], index=0)
-    nuevo_art, modo_preconteo = (modo_seleccionado == "Artículo NO listado"), (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
+    nuevo_art = (modo_seleccionado == "Artículo NO listado")
+    modo_preconteo = (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
     
     if not nuevo_art:
         current_index = st.session_state.auto_index
         if current_index >= len(opciones): current_index = 0 
         
-        art_sel = st.selectbox("Seleccione Artículo (Aplica para registro y desglose):", opciones, index=current_index, placeholder="Elija un producto...")
+        art_sel = st.selectbox("📦 Seleccione Artículo:", opciones, index=current_index, placeholder="Elija un producto...")
         pue_final = productos_dict_reg.get(art_sel, 1.0) if art_sel else 1.0
     else:
         c_n1, c_n2 = st.columns([2,1])
         with c_n1: art_sel = st.text_input("Nombre del Nuevo Artículo:", value=None, placeholder="Ej. CAJA PERSONALIZADA")
         with c_n2: pue_final = st.number_input("Asignar Peso Unitario:", value=None, format="%.4f", placeholder="0.0000")
 
-    # --- Interfaz aplanada para taras rápidas ---
+    # --- Interfaz aplanada para taras y botones ---
     with st.form(key="form_pesaje", clear_on_submit=True):
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
             cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=None, step=1.0, placeholder="Ej. 50")
             peso_bruto, tara_total = 0.0, 0.0
-            formula = f"[{ubicacion_pesaje.upper()}] CONTEO MANUAL DIRECTO"
+            formula = f"[{ubicacion_actual.upper()}] CONTEO MANUAL DIRECTO"
         else:
             col1, col2 = st.columns([3, 1])
             with col1:
                 peso_bruto = st.number_input("⚖️ Peso Bruto (kg):", value=None, format="%.3f", placeholder="0.000")
             with col2:
-                st.write("") # Pequeño espaciador para alinear con el input
+                st.write("") 
                 t_cont = st.checkbox("📦 Tara Contenedor (0.045)", value=False)
                 with st.popover("➕ Tara Manual"):
                     t_manual = st.number_input("⚖️ Peso de tara extra:", value=None, format="%.3f", placeholder="0.000")
         
         st.divider()
-        col_skip, col_boton = st.columns(2)
-        with col_skip:
-            btn_skip = st.form_submit_button("⏭️ OMITIR")
-        with col_boton:
+        
+        # 2. Todos los botones de confirmación pegados a la derecha y apilados
+        col_vacia, col_botones = st.columns([2, 1])
+        with col_botones:
             btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary")
+            btn_skip = st.form_submit_button("⏭️ OMITIR")
 
     if btn_skip:
         if not nuevo_art:
@@ -557,7 +558,7 @@ with tab_calc:
                 tara_total = (0.045 if t_cont else 0) + (t_manual if t_manual is not None else 0.0)
                 is_tinta = "TINTA" in str(art_sel).upper(); offset = 0.030 if is_tinta else 0.0
                 resultado = truncar_dos_decimales(((peso_bruto - tara_total) - offset) / pue_final)
-                formula = f"[{ubicacion_pesaje.upper()}] ({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
+                formula = f"[{ubicacion_actual.upper()}] ({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
 
         if datos_listos:
             fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
@@ -575,7 +576,7 @@ with tab_calc:
                             s.execute(text("""INSERT INTO pesajes_guardados 
                                          (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
                                          VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df, FALSE)"""),
-                                      {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": cat_reg, "pb": peso_bruto if not modo_preconteo else 0, 
+                                      {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": categoria_actual, "pb": peso_bruto if not modo_preconteo else 0, 
                                        "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
                                        "rp": resultado, "df": "[AUTO-AJUSTE BÓVEDA] " + formula})
                         s.commit()
@@ -590,7 +591,7 @@ with tab_calc:
                         res = s.execute(text("""INSERT INTO pesajes_individuales 
                                      (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
                                      VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df) RETURNING id"""),
-                                  {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": cat_reg, "pb": peso_bruto if not modo_preconteo else 0, 
+                                  {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": categoria_actual, "pb": peso_bruto if not modo_preconteo else 0, 
                                    "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
                                    "rp": resultado, "df": formula})
                         id_recien = res.fetchone()[0]
@@ -599,20 +600,21 @@ with tab_calc:
                         if not nuevo_art:
                             avanzar_flujo()
                             
-                        mostrar_popup_exito(id_recien, art_sel, resultado, sucursal_in, cat_reg)
+                        mostrar_popup_exito(id_recien, art_sel, resultado, sucursal_in, categoria_actual)
             except Exception as e: st.error(f"Error al guardar: {e}")
         else: st.error("❌ Error: Revisa los datos ingresados.")
 
+    # 3. Historial del producto oculto hasta abajo
     if art_sel:
         st.divider()
-        st.markdown(f"📋 **Historial de {art_sel}**")
-        df_a = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
-        df_g = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
-        if not df_g.empty: df_g['detalle_formula'] = "[GUARDADO] " + df_g['detalle_formula'].astype(str)
-        df_comb = pd.concat([df_a, df_g], ignore_index=True)
-        if not df_comb.empty:
-            st.dataframe(df_comb[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
-        else: st.info("No hay pesajes registrados para este artículo.")
+        with st.expander(f"📋 Ver detalle e historial de: {art_sel}", expanded=False):
+            df_a = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
+            df_g = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
+            if not df_g.empty: df_g['detalle_formula'] = "[GUARDADO] " + df_g['detalle_formula'].astype(str)
+            df_comb = pd.concat([df_a, df_g], ignore_index=True)
+            if not df_comb.empty:
+                st.dataframe(df_comb[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
+            else: st.info("No hay pesajes registrados para este artículo.")
 
 # --- TAB 2: EXPORTACIÓN Y BÓVEDA ---
 with tab_historial:
