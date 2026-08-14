@@ -41,8 +41,15 @@ st.markdown("""
         transition: none !important; animation: none !important;
     }
 
+    /* CENTRADO DEL MENSAJE DE CONFIRMACIÓN (TOAST) */
     div[data-testid="stToastContainer"] {
-        top: 2rem !important; bottom: auto !important; right: 2rem !important;
+        top: 2rem !important; 
+        bottom: auto !important; 
+        left: 50% !important; 
+        right: auto !important; 
+        transform: translateX(-50%) !important;
+        justify-content: center !important;
+        align-items: center !important;
     }
     
     ul[role="listbox"] li[aria-selected="true"] {
@@ -536,9 +543,9 @@ with tab_calc:
         
         st.divider()
         
-        # 2. Todos los botones de confirmación pegados a la derecha y apilados
-        col_vacia, col_botones = st.columns([2, 1])
-        with col_botones:
+        # 2. Todos los botones de confirmación centrados y apilados
+        col_izq, col_centro, col_der = st.columns([1, 2, 1])
+        with col_centro:
             btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary")
             btn_skip = st.form_submit_button("⏭️ OMITIR")
 
