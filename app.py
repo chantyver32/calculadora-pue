@@ -535,16 +535,19 @@ with tab_calc:
             peso_bruto, tara_total = 0.0, 0.0
             formula = f"[{st.session_state.ubicacion_pesaje.upper()}] CONTEO MANUAL DIRECTO"
         else:
-            col1, col2, col3 = st.columns([2, 1, 1])
+            col1, col2 = st.columns([3, 1])
             with col1:
                 peso_bruto = st.number_input("⚖️ Peso Bruto (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
             with col2:
+                st.write("") # Pequeño espaciador para alinear con el input
                 t_cont = st.checkbox("📦 Tara Contenedor (0.045)", value=t_cont_sugerido)
-            with col3:
-                t_manual = st.number_input("⚖️ Tara Manual:", value=None, format="%.3f", placeholder="0.000")
+                with st.popover("➕ Tara Manual"):
+                    t_manual = st.number_input("⚖️ Peso de tara extra:", value=None, format="%.3f", placeholder="0.000")
         
         st.divider()
-        btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE PRODUCTO")
+        col_vacia, col_boton = st.columns([2, 1])
+        with col_boton:
+            btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE")
 
     if btn_save:
         articulo_valido = art_sel is not None and art_sel.strip() != ""
