@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import pytz
 import urllib.parse
 import io
-import speech_recognition as sr
 from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -472,82 +471,54 @@ with tab_calc:
         index=["Bodega", "Piso de Venta"].index(st.session_state.ubicacion_pesaje)
     )
     
-    with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
-        audio_bytes = st.audio_input("Di algo como: 0.620 de capacillo chino en contenedor.", key="audio_reg")
-        texto_reconocido, texto_filtro = "", ""
-        if audio_bytes:
-            recognizer = sr.Recognizer()
-            with sr.AudioFile(audio_bytes) as source:
-                audio_data = recognizer.record(source)
-                try:
-                    texto_reconocido = recognizer.recognize_google(audio_data, language="es-MX")
-                    st.toast(f"🎤 Escuchado: {texto_reconocido}")
-                    components.html(f"""<script>
-                        const utterance = new SpeechSynthesisUtterance("{texto_reconocido}");
-                        utterance.lang = 'es-MX'; utterance.rate = 1.0;
-                        window.speechSynthesis.speak(utterance);
-                    </script>""", height=0)
-                except sr.UnknownValueError: st.error("No se pudo entender el audio.")
-                except sr.RequestError: st.error("Error en el servicio de reconocimiento de voz.")
-            texto_filtro = texto_reconocido.upper() if texto_reconocido else ""
-    
-    idx_sugerido, peso_sugerido, pue_sugerido, t_cont_sugerido, nombre_limpio_sugerido = None, None, None, False, ""
     opciones = sorted(productos_dict_reg.keys())
     
-    if texto_filtro:
-        if "CONTENEDOR" in texto_filtro: t_cont_sugerido = True
-        match_pue = re.search(r'(?:PESO UNITARIO|UNITARIO|PUE|ESTÁNDAR|ESTANDAR)[^\d]*(\d+(?:[.,]\d+)?)', texto_filtro)
-        if match_pue: pue_sugerido = float(match_pue.group(1).replace(',', '.'))
-        numeros_floats = [float(n.replace(',', '.')) for n in re.findall(r'\d+(?:[.,]\d+)?', texto_filtro)]
-        if numeros_floats:
-            if pue_sugerido in numeros_floats: numeros_floats.remove(pue_sugerido) 
-            if numeros_floats: peso_sugerido = numeros_floats[0] 
-        texto_limpio = texto_filtro
-        for p in [r'\d+(?:[.,]\d+)?', 'PESO UNITARIO', 'PUE', 'PESO', 'UNITARIO', 'ESTÁNDAR', 'ESTANDAR', 'KILOS', 'KG', 'GRAMOS', 'CON', 'SIN', 'Y', 'DE', 'EL', 'LA', 'CONTENEDOR', 'BISAGRA', 'LLEVA', 'ASIGNAR']:
-            texto_limpio = re.sub(r'\b' + p + r'\b', '', texto_limpio)
-        nombre_limpio_sugerido = ' '.join(texto_limpio.split()) 
-        if nombre_limpio_sugerido.split():
-            max_coincidencias = 0
-            for i, prod in enumerate(opciones):
-                coincidencias = sum(1 for palabra in nombre_limpio_sugerido.split() if palabra in prod.upper())
-                if coincidencias > max_coincidencias: max_coincidencias, idx_sugerido = coincidencias, i
-
     modo_seleccionado = st.selectbox("⚙️ Seleccione el Modo de Registro:", ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"], index=0)
     nuevo_art, modo_preconteo = (modo_seleccionado == "Artículo NO listado"), (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
     
     if not nuevo_art:
         # Lógica de auto-avance
-        current_index = idx_sugerido if idx_sugerido is not None else st.session_state.auto_index
+        current_index = st.session_state.auto_index
         if current_index >= len(opciones): current_index = 0 
         
         art_sel = st.selectbox("Seleccione Artículo (Aplica para registro y desglose):", opciones, index=current_index, placeholder="Elija un producto...")
         pue_final = productos_dict_reg.get(art_sel, 1.0) if art_sel else 1.0
     else:
         c_n1, c_n2 = st.columns([2,1])
-        with c_n1: art_sel = st.text_input("Nombre del Nuevo Artículo:", value=nombre_limpio_sugerido if nombre_limpio_sugerido else None, placeholder="Ej. CAJA PERSONALIZADA")
-        with c_n2: pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
+        with c_n1: art_sel = st.text_input("Nombre del Nuevo Artículo:", value=None, placeholder="Ej. CAJA PERSONALIZADA")
+        with c_n2: pue_final = st.number_input("Asignar Peso Unitario:", value=None, format="%.4f", placeholder="0.0000")
 
     # --- Interfaz aplanada para taras rápidas ---
     with st.form(key="form_pesaje", clear_on_submit=True):
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
-            cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=peso_sugerido, step=1.0, placeholder="Ej. 50")
+            cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=None, step=1.0, placeholder="Ej. 50")
             peso_bruto, tara_total = 0.0, 0.0
             formula = f"[{st.session_state.ubicacion_pesaje.upper()}] CONTEO MANUAL DIRECTO"
         else:
             col1, col2 = st.columns([3, 1])
             with col1:
-                peso_bruto = st.number_input("⚖️ Peso Bruto (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
+                peso_bruto = st.number_input("⚖️ Peso Bruto (kg):", value=None, format="%.3f", placeholder="0.000")
             with col2:
                 st.write("") # Pequeño espaciador para alinear con el input
-                t_cont = st.checkbox("📦 Tara Contenedor (0.045)", value=t_cont_sugerido)
+                t_cont = st.checkbox("📦 Tara Contenedor (0.045)", value=False)
                 with st.popover("➕ Tara Manual"):
                     t_manual = st.number_input("⚖️ Peso de tara extra:", value=None, format="%.3f", placeholder="0.000")
         
         st.divider()
-        col_vacia, col_boton = st.columns([2, 1])
+        col_skip, col_boton = st.columns(2)
+        with col_skip:
+            btn_skip = st.form_submit_button("⏭️ OMITIR")
         with col_boton:
-            btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE")
+            btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary")
+
+    if btn_skip:
+        if not nuevo_art:
+            if st.session_state.auto_index < len(opciones) - 1:
+                st.session_state.auto_index += 1
+            else:
+                st.session_state.auto_index = 0
+        st.rerun()
 
     if btn_save:
         articulo_valido = art_sel is not None and art_sel.strip() != ""
