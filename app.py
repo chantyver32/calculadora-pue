@@ -115,14 +115,66 @@ with conn.session as s:
     
     s.execute(text('''CREATE TABLE IF NOT EXISTS usuarios 
                  (id SERIAL PRIMARY KEY, username TEXT, password TEXT)'''))
+                 
+    s.execute(text('''CREATE TABLE IF NOT EXISTS catalogo_productos 
+                 (id SERIAL PRIMARY KEY, categoria TEXT, articulo TEXT, pue REAL, UNIQUE(categoria, articulo))'''))
 
-    # Parchar bases de datos existentes con la columna de categoría
     s.execute(text('ALTER TABLE pesajes_individuales ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE auditoria_stock ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS aplicado_en_corte BOOLEAN DEFAULT TRUE;'))
 
     s.commit()
+
+# ------------------ DICCIONARIO BASE (SE MIGRA A BASE DE DATOS) ------------------
+dicc_inicial = {
+    "Insumos Venta": {
+        "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
+        "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364, "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
+        "CAJA TUTIS POR PZA A": 0.048, "CAPACILLO CHINO POR PZA B": 0.00104, "CAPACILLO BLANCO POR PZA A": 0.000436,
+        "CONT BISAG P/5-6 TUTIS POR PZA A": 0.014, "CUCHARA MED DESCH POR PZA A": 0.00165,
+        "EMPLAYE GRANDE ROLLO POR PZA T": 1.174, "PAPEL ALUMINIO POR PZA T": 1.342, "SERVILLETA PQ/500 HJ POR PZA A": 0.001192,
+        "BOLSA LOCK POR PZA A": 0.018,
+        "AZUCAR REFINADA POR KG A": 1.0, "BOLSA CAMISETA LOGO CH POR KG A": 1.0, 
+        "BOLSA CAMISETA LOGO GDE POR KG A": 1.0, "BOLSA NATURAL 18 X 25 POR KG A": 1.0, 
+        "PAPEL ENVOLTURA CHAMPLITTE POR KG M": 1.0, "ROLLO POLIPUNTEADO 25 X 35 POR KG B": 1.0, 
+        "BOLSA 90 X 120 POR KG A": 1.0, "BOLSA 60 X 90 POR KG M": 1.0
+    },
+    "Limpieza Venta": {
+        "COFIA POR PQ/100 PZAS A": 0.238, "GUANTES TRANSP POLIURETANO POR PQ/100 PZAS A": 0.086,
+        "FIBRA PREGON P/BAÑO POR PZA M": 1.0, "FIBRA SCOTCH BRITE POR PZA A": 1.0,
+        "FIBRA AZUL P/LAVAR CHAROLAS POR PZA B": 1.0, "CUBETA POR PZA M": 1.0, "ESCOBA POR PZA A": 1.0, 
+        "ESCURRIDOR POR PZA M": 1.0, "RECOGEDOR POR PZA M": 1.0, "MECHUDO POR PZA A": 1.0
+    },
+    "Papelería Venta": {
+        "ETIQUETA CHAMPLITTE CHICA 4 X 4 POR PZA B": 0.000328, "ETIQUETA CHAMPLITTE MEDIANA 6 X 6 POR PZA B": 0.00057,
+        "GRAPAS CJ POR PZA M": 0.164, "CINTA TRANSP EMPAQUE POR PZA M": 0.272, "CINTA DELIMITADORA POR PZA B": 0.346,
+        "COMPROBANTE TRASLADO VALORES POR PZA A": 0.0086, "ETIQUETA BLANCA ADH 13 X 19 POR PQ M": 0.050,
+        "HOJAS BLANCAS PQ/500 POR PZA A": 2.146, "TINTA EPSON 544 (CMYK) POR PZA A": 0.078, 
+        "ROLLO TERMICO P/TPV POR PZA A": 1.0
+    }
+}
+
+df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0)
+if df_cat_global.empty:
+    with conn.session as s:
+        for cat, prods in dicc_inicial.items():
+            for art, pue in prods.items():
+                s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue) VALUES (:c, :a, :p) ON CONFLICT DO NOTHING"), 
+                          {"c": cat, "a": art, "p": pue})
+        s.commit()
+    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0)
+
+productos_por_categoria = {}
+for _, row in df_cat_global.iterrows():
+    c = row['categoria']
+    if c not in productos_por_categoria:
+        productos_por_categoria[c] = {}
+    productos_por_categoria[c][row['articulo']] = row['pue']
+
+for c in ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]:
+    if c not in productos_por_categoria:
+        productos_por_categoria[c] = {}
 
 # ------------------ SISTEMA DE LOGIN ------------------
 def verificar_login():
@@ -213,36 +265,6 @@ with st.sidebar:
                         s.commit()
                     st.session_state.show_toast = "✅ Base de datos eliminada"
                     st.rerun()
-
-# ------------------ DICCIONARIO CATEGORIZADO ------------------
-productos_por_categoria = {
-    "Insumos Venta": {
-        "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
-        "BOLSA PAPEL CAFE #14 POR PQ/100 PZAS M": 1.364, "BOLSA PAPEL CAFE #20 POR PQ/100 PZAS M": 1.616,
-        "CAJA TUTIS POR PZA A": 0.048, "CAPACILLO CHINO POR PZA B": 0.00104, "CAPACILLO BLANCO POR PZA A": 0.000436,
-        "CONT BISAG P/5-6 TUTIS POR PZA A": 0.014, "CUCHARA MED DESCH POR PZA A": 0.00165,
-        "EMPLAYE GRANDE ROLLO POR PZA T": 1.174, "PAPEL ALUMINIO POR PZA T": 1.342, "SERVILLETA PQ/500 HJ POR PZA A": 0.001192,
-        "COFIA POR PQ/100 PZAS A": 0.238, "GUANTES TRANSP POLIURETANO POR PQ/100 PZAS A": 0.086,
-        "HIGIENICO SCOTT ROLLO POR PZA M": 0.500, "TOALLA ROLLO 180M POR PZA M": 1.115, "BOLSA LOCK POR PZA A": 0.018,
-        "AGUA CIEL 20 POR LT A": 1.0, "AZUCAR REFINADA POR KG A": 1.0, "BOLSA CAMISETA LOGO CH POR KG A": 1.0, 
-        "BOLSA CAMISETA LOGO GDE POR KG A": 1.0, "BOLSA NATURAL 18 X 25 POR KG A": 1.0, 
-        "PAPEL ENVOLTURA CHAMPLITTE POR KG M": 1.0, "ROLLO POLIPUNTEADO 25 X 35 POR KG B": 1.0, 
-        "BOLSA 90 X 120 POR KG A": 1.0, "BOLSA 60 X 90 POR KG M": 1.0
-    },
-    "Limpieza Venta": {
-        "CLOROLIMP POR L A": 1.0, "FIBRA PREGON P/BAÑO POR PZA M": 1.0, "FIBRA SCOTCH BRITE POR PZA A": 1.0,
-        "FIBRA AZUL P/LAVAR CHAROLAS POR PZA B": 1.0, "JABON LIQUIDO PARA MANOS POR L M": 1.0, "LAVALOZA POR L A": 1.0,
-        "PRO GEL POR L B": 1.0, "CUBETA POR PZA M": 1.0, "ESCOBA POR PZA A": 1.0, "ESCURRIDOR POR PZA M": 1.0, 
-        "RECOGEDOR POR PZA M": 1.0, "MECHUDO POR PZA A": 1.0
-    },
-    "Papelería Venta": {
-        "ETIQUETA CHAMPLITTE CHICA 4 X 4 POR PZA B": 0.000328, "ETIQUETA CHAMPLITTE MEDIANA 6 X 6 POR PZA B": 0.00057,
-        "GRAPAS CJ POR PZA M": 0.164, "CINTA TRANSP EMPAQUE POR PZA M": 0.272, "CINTA DELIMITADORA POR PZA B": 0.346,
-        "COMPROBANTE TRASLADO VALORES POR PZA A": 0.0086, "ETIQUETA BLANCA ADH 13 X 19 POR PQ M": 0.050,
-        "HOJAS BLANCAS PQ/500 POR PZA A": 2.146, "TINTA EPSON 544 (CMYK) POR PZA A": 0.078, 
-        "ROLLO TERMICO P/TPV POR PZA A": 1.0
-    }
-}
 
 # ------------------ FUNCIONES AUXILIARES ------------------
 def truncar_dos_decimales(valor):
@@ -336,18 +358,17 @@ def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones):
         st.write(f"Terminaste con todos los productos de **{orden_categorias[idx_cat]}**.")
         st.info(f"¿Deseas pasar a **{orden_categorias[next_cat_idx]}** en **{orden_ubicaciones[next_ubi_idx]}**?")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("❌ No, quedarme aquí", use_container_width=True):
-                st.session_state.pending_transition = False
-                st.rerun()
-        with col2:
-            if st.button("✅ Sí, avanzar", type="primary", use_container_width=True):
-                st.session_state.cat_idx = next_cat_idx
-                st.session_state.ubi_idx = next_ubi_idx
-                st.session_state.auto_index = 0
-                st.session_state.pending_transition = False
-                st.rerun()
+        # Botones apilados, con el "Sí" primero para que quede arriba en móviles
+        if st.button("✅ Sí, avanzar", type="primary", use_container_width=True):
+            st.session_state.cat_idx = next_cat_idx
+            st.session_state.ubi_idx = next_ubi_idx
+            st.session_state.auto_index = 0
+            st.session_state.pending_transition = False
+            st.rerun()
+
+        if st.button("❌ No, quedarme aquí", use_container_width=True):
+            st.session_state.pending_transition = False
+            st.rerun()
 
 def generar_word_tarjetas(df):
     doc = Document()
@@ -401,7 +422,7 @@ with tab_stock:
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     
     categoria_activa_stock = st.selectbox("📂 Seleccione la Categoría de Inventario:", list(productos_por_categoria.keys()), key="cat_stock")
-    productos_dict_stock = productos_por_categoria[categoria_activa_stock]
+    productos_dict_stock = productos_por_categoria.get(categoria_activa_stock, {})
     
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
 
@@ -504,6 +525,39 @@ with tab_stock:
         st.session_state.show_toast = f"✅ ¡Inventario convertido para mañana ({categoria_activa_stock})!"
         st.rerun()
 
+    # --- ADMINISTRADOR DE CATÁLOGO DINÁMICO ---
+    st.divider()
+    st.subheader(f"📝 Administrar Catálogo: {categoria_activa_stock}")
+    st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación.")
+    
+    df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue']].copy()
+    
+    edited_catalogo = st.data_editor(
+        df_cat_edit,
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        key=f"editor_cat_{categoria_activa_stock}",
+        column_config={
+            "articulo": st.column_config.TextColumn("Nombre del Producto", required=True),
+            "pue": st.column_config.NumberColumn("Peso Unitario Estándar (PUE)", required=True, format="%.4f")
+        }
+    )
+    
+    if st.button(f"💾 Guardar Catálogo y Actualizar Pestañas", type="secondary", use_container_width=True):
+        with conn.session as s:
+            s.execute(text("DELETE FROM catalogo_productos WHERE categoria = :cat"), {"cat": categoria_activa_stock})
+            
+            for _, row in edited_catalogo.iterrows():
+                art_val = str(row['articulo']).strip()
+                if art_val and not pd.isna(row['pue']):
+                    pue_val = float(row['pue'])
+                    s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue) VALUES (:c, :a, :p) ON CONFLICT DO NOTHING"), 
+                              {"c": categoria_activa_stock, "a": art_val, "p": pue_val})
+            s.commit()
+        st.session_state.show_toast = "✅ Catálogo guardado. La aplicación se ha actualizado."
+        st.rerun()
+
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA ---
 with tab_calc:
     orden_categorias = ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]
@@ -537,12 +591,12 @@ with tab_calc:
     categoria_actual = orden_categorias[st.session_state.cat_idx]
     ubicacion_actual = orden_ubicaciones[st.session_state.ubi_idx]
     
-    productos_dict_reg = productos_por_categoria[categoria_actual]
+    productos_dict_reg = productos_por_categoria.get(categoria_actual, {})
     opciones = sorted(productos_dict_reg.keys())
     
     # Función maestra de avance modificada para usar la confirmación
     def avanzar_flujo():
-        if st.session_state.auto_index < len(opciones) - 1:
+        if len(opciones) > 0 and st.session_state.auto_index < len(opciones) - 1:
             st.session_state.auto_index += 1
         else:
             # En lugar de avanzar, prendemos la bandera para que en la próxima recarga salte el modal
@@ -553,9 +607,9 @@ with tab_calc:
     
     if not nuevo_art:
         current_index = st.session_state.auto_index
-        if current_index >= len(opciones): current_index = 0 
+        if current_index >= len(opciones) and len(opciones) > 0: current_index = 0 
         
-        art_sel = st.selectbox("📦 Seleccione Artículo:", opciones, index=current_index, placeholder="Elija un producto...")
+        art_sel = st.selectbox("📦 Seleccione Artículo:", opciones, index=current_index if len(opciones) > 0 else None, placeholder="Elija un producto...")
         pue_final = productos_dict_reg.get(art_sel, 1.0) if art_sel else 1.0
     else:
         c_n1, c_n2 = st.columns([2,1])
