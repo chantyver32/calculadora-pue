@@ -305,6 +305,50 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
             st.session_state.show_toast = "✅ Trasladado a la Bóveda."
             st.rerun()
 
+@st.dialog("⏭️ Confirmar Avance")
+def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones):
+    idx_cat = st.session_state.cat_idx
+    idx_ubi = st.session_state.ubi_idx
+    
+    next_cat_idx = idx_cat
+    next_ubi_idx = idx_ubi
+    is_complete = False
+
+    # Calculamos cuál es la siguiente categoría o ubicación
+    if idx_cat < len(orden_categorias) - 1:
+        next_cat_idx = idx_cat + 1
+    else:
+        next_cat_idx = 0
+        if idx_ubi < len(orden_ubicaciones) - 1:
+            next_ubi_idx = idx_ubi + 1
+        else:
+            is_complete = True
+
+    if is_complete:
+        st.success("🎉 ¡Has completado todas las categorías en todas las ubicaciones!")
+        if st.button("Finalizar y reiniciar recorrido", use_container_width=True, type="primary"):
+            st.session_state.pending_transition = False
+            st.session_state.cat_idx = 0
+            st.session_state.ubi_idx = 0
+            st.session_state.auto_index = 0
+            st.rerun()
+    else:
+        st.write(f"Terminaste con todos los productos de **{orden_categorias[idx_cat]}**.")
+        st.info(f"¿Deseas pasar a **{orden_categorias[next_cat_idx]}** en **{orden_ubicaciones[next_ubi_idx]}**?")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("❌ No, quedarme aquí", use_container_width=True):
+                st.session_state.pending_transition = False
+                st.rerun()
+        with col2:
+            if st.button("✅ Sí, avanzar", type="primary", use_container_width=True):
+                st.session_state.cat_idx = next_cat_idx
+                st.session_state.ubi_idx = next_ubi_idx
+                st.session_state.auto_index = 0
+                st.session_state.pending_transition = False
+                st.rerun()
+
 def generar_word_tarjetas(df):
     doc = Document()
     for section in doc.sections:
@@ -465,10 +509,14 @@ with tab_calc:
     orden_categorias = ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]
     orden_ubicaciones = ["Bodega", "Piso de Venta"]
     
-    # Estados desvinculados de los widgets para evitar el error de Streamlit
     if "cat_idx" not in st.session_state: st.session_state.cat_idx = 0
     if "ubi_idx" not in st.session_state: st.session_state.ubi_idx = 0
     if "auto_index" not in st.session_state: st.session_state.auto_index = 0
+    if "pending_transition" not in st.session_state: st.session_state.pending_transition = False
+
+    # Verificamos primero si hay una transición pendiente por confirmar
+    if st.session_state.pending_transition:
+        dialog_confirmar_transicion(orden_categorias, orden_ubicaciones)
 
     # 1. Configuración oculta por default en un expander
     with st.expander("⚙️ Ajustes de Pesaje (Categoría, Ubicación, Modo)", expanded=False):
@@ -492,23 +540,13 @@ with tab_calc:
     productos_dict_reg = productos_por_categoria[categoria_actual]
     opciones = sorted(productos_dict_reg.keys())
     
-    # Función maestra de avance
+    # Función maestra de avance modificada para usar la confirmación
     def avanzar_flujo():
         if st.session_state.auto_index < len(opciones) - 1:
             st.session_state.auto_index += 1
         else:
-            st.session_state.auto_index = 0
-            if st.session_state.cat_idx < len(orden_categorias) - 1:
-                st.session_state.cat_idx += 1
-                st.session_state.show_toast = f"🔄 Cambiando a categoría: {orden_categorias[st.session_state.cat_idx]}"
-            else:
-                st.session_state.cat_idx = 0
-                if st.session_state.ubi_idx < len(orden_ubicaciones) - 1:
-                    st.session_state.ubi_idx += 1
-                    st.session_state.show_toast = f"🔄 Cambiando a ubicación: {orden_ubicaciones[st.session_state.ubi_idx]}"
-                else:
-                    st.session_state.show_toast = "🎉 ¡Recorrido completo finalizado!"
-                    st.session_state.ubi_idx = 0
+            # En lugar de avanzar, prendemos la bandera para que en la próxima recarga salte el modal
+            st.session_state.pending_transition = True
 
     nuevo_art = (modo_seleccionado == "Artículo NO listado")
     modo_preconteo = (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
@@ -543,7 +581,6 @@ with tab_calc:
         
         st.divider()
         
-        # 2. Todos los botones de confirmación centrados y expandidos
         col_izq, col_centro, col_der = st.columns([1, 2, 1])
         with col_centro:
             btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary", use_container_width=True)
