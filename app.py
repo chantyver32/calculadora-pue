@@ -123,10 +123,11 @@ with conn.session as s:
     s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE auditoria_stock ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS aplicado_en_corte BOOLEAN DEFAULT TRUE;'))
+    s.execute(text('ALTER TABLE catalogo_productos ADD COLUMN IF NOT EXISTS ubicacion_conteo TEXT DEFAULT \'Combinado\';'))
 
     s.commit()
 
-# ------------------ DICCIONARIO BASE (SE MIGRA A BASE DE DATOS) ------------------
+# ------------------ DICCIONARIO BASE ------------------
 dicc_inicial = {
     "Insumos Venta": {
         "BOLSA PAPEL CAFE #5 POR PQ/100 PZAS A": 0.832, "BOLSA PAPEL CAFE #6 POR PQ/100 PZAS A": 0.870,
@@ -160,7 +161,7 @@ if df_cat_global.empty:
     with conn.session as s:
         for cat, prods in dicc_inicial.items():
             for art, pue in prods.items():
-                s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue) VALUES (:c, :a, :p) ON CONFLICT DO NOTHING"), 
+                s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, 'Combinado') ON CONFLICT DO NOTHING"), 
                           {"c": cat, "a": art, "p": pue})
         s.commit()
     df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0)
@@ -336,7 +337,6 @@ def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones):
     next_ubi_idx = idx_ubi
     is_complete = False
 
-    # Calculamos cuál es la siguiente categoría o ubicación
     if idx_cat < len(orden_categorias) - 1:
         next_cat_idx = idx_cat + 1
     else:
@@ -358,7 +358,6 @@ def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones):
         st.write(f"Terminaste con todos los productos de **{orden_categorias[idx_cat]}**.")
         st.info(f"¿Deseas pasar a **{orden_categorias[next_cat_idx]}** en **{orden_ubicaciones[next_ubi_idx]}**?")
         
-        # Botones apilados, con el "Sí" primero para que quede arriba en móviles
         if st.button("✅ Sí, avanzar", type="primary", use_container_width=True):
             st.session_state.cat_idx = next_cat_idx
             st.session_state.ubi_idx = next_ubi_idx
@@ -426,7 +425,6 @@ with tab_stock:
     
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
 
-    # Filtramos todo por la categoría activa
     query_unificada = """
         SELECT articulo, resultado_pue 
         FROM (
@@ -530,7 +528,13 @@ with tab_stock:
     st.subheader(f"📝 Administrar Catálogo: {categoria_activa_stock}")
     st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación.")
     
-    df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue']].copy()
+    # Nos aseguramos de obtener la base de datos fresca para evitar desincronizaciones 
+    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0)
+    df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue', 'ubicacion_conteo']].copy()
+    
+    if 'ubicacion_conteo' not in df_cat_edit.columns: 
+        df_cat_edit['ubicacion_conteo'] = "Combinado"
+    df_cat_edit['ubicacion_conteo'] = df_cat_edit['ubicacion_conteo'].fillna("Combinado")
     
     edited_catalogo = st.data_editor(
         df_cat_edit,
@@ -540,7 +544,14 @@ with tab_stock:
         key=f"editor_cat_{categoria_activa_stock}",
         column_config={
             "articulo": st.column_config.TextColumn("Nombre del Producto", required=True),
-            "pue": st.column_config.NumberColumn("Peso Unitario Estándar (PUE)", required=True, format="%.4f")
+            "pue": st.column_config.NumberColumn("Peso Unitario Estándar (PUE)", required=True, format="%.4f"),
+            "ubicacion_conteo": st.column_config.SelectboxColumn(
+                "Aplica en",
+                help="¿Dónde se cuenta este insumo?",
+                options=["Bodega", "Piso de Venta", "Combinado"],
+                required=True,
+                default="Combinado"
+            )
         }
     )
     
@@ -552,8 +563,10 @@ with tab_stock:
                 art_val = str(row['articulo']).strip()
                 if art_val and not pd.isna(row['pue']):
                     pue_val = float(row['pue'])
-                    s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue) VALUES (:c, :a, :p) ON CONFLICT DO NOTHING"), 
-                              {"c": categoria_activa_stock, "a": art_val, "p": pue_val})
+                    ubi_val = str(row['ubicacion_conteo']) if pd.notna(row['ubicacion_conteo']) else "Combinado"
+                    
+                    s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, :u) ON CONFLICT DO NOTHING"), 
+                              {"c": categoria_activa_stock, "a": art_val, "p": pue_val, "u": ubi_val})
             s.commit()
         st.session_state.show_toast = "✅ Catálogo guardado. La aplicación se ha actualizado."
         st.rerun()
@@ -568,17 +581,14 @@ with tab_calc:
     if "auto_index" not in st.session_state: st.session_state.auto_index = 0
     if "pending_transition" not in st.session_state: st.session_state.pending_transition = False
 
-    # Verificamos primero si hay una transición pendiente por confirmar
     if st.session_state.pending_transition:
         dialog_confirmar_transicion(orden_categorias, orden_ubicaciones)
 
-    # 1. Configuración oculta por default en un expander
     with st.expander("⚙️ Ajustes de Pesaje (Categoría, Ubicación, Modo)", expanded=False):
         new_cat = st.selectbox("📂 Seleccione Categoría:", orden_categorias, index=st.session_state.cat_idx)
         new_ubi = st.radio("📍 Ubicación del pesaje:", orden_ubicaciones, index=st.session_state.ubi_idx, horizontal=True)
         modo_seleccionado = st.selectbox("⚙️ Seleccione el Modo:", ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"], index=0)
 
-        # Si el usuario cambia manualmente el menú, actualizamos el estado y reiniciamos el contador
         if new_cat != orden_categorias[st.session_state.cat_idx]:
             st.session_state.cat_idx = orden_categorias.index(new_cat)
             st.session_state.auto_index = 0
@@ -591,15 +601,24 @@ with tab_calc:
     categoria_actual = orden_categorias[st.session_state.cat_idx]
     ubicacion_actual = orden_ubicaciones[st.session_state.ubi_idx]
     
-    productos_dict_reg = productos_por_categoria.get(categoria_actual, {})
-    opciones = sorted(productos_dict_reg.keys())
+    # Filtro automático según la base de datos para la ruta inteligente
+    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0) 
+    df_cat_filtrado = df_cat_global[df_cat_global['categoria'] == categoria_actual]
     
-    # Función maestra de avance modificada para usar la confirmación
+    opciones = []
+    for _, row in df_cat_filtrado.iterrows():
+        ubi_item = row.get('ubicacion_conteo', 'Combinado')
+        if pd.isna(ubi_item) or ubi_item == "":
+            ubi_item = "Combinado"
+        if ubi_item == "Combinado" or ubi_item.lower() == ubicacion_actual.lower():
+            opciones.append(row['articulo'])
+            
+    opciones = sorted(list(set(opciones)))
+    
     def avanzar_flujo():
         if len(opciones) > 0 and st.session_state.auto_index < len(opciones) - 1:
             st.session_state.auto_index += 1
         else:
-            # En lugar de avanzar, prendemos la bandera para que en la próxima recarga salte el modal
             st.session_state.pending_transition = True
 
     nuevo_art = (modo_seleccionado == "Artículo NO listado")
@@ -610,13 +629,15 @@ with tab_calc:
         if current_index >= len(opciones) and len(opciones) > 0: current_index = 0 
         
         art_sel = st.selectbox("📦 Seleccione Artículo:", opciones, index=current_index if len(opciones) > 0 else None, placeholder="Elija un producto...")
-        pue_final = productos_dict_reg.get(art_sel, 1.0) if art_sel else 1.0
+        
+        # Recuperamos el PUE desde el dataframe filtrado
+        df_match = df_cat_filtrado[df_cat_filtrado['articulo'] == art_sel]
+        pue_final = float(df_match['pue'].values[0]) if art_sel and not df_match.empty else 1.0
     else:
         c_n1, c_n2 = st.columns([2,1])
         with c_n1: art_sel = st.text_input("Nombre del Nuevo Artículo:", value=None, placeholder="Ej. CAJA PERSONALIZADA")
         with c_n2: pue_final = st.number_input("Asignar Peso Unitario:", value=None, format="%.4f", placeholder="0.0000")
 
-    # --- Interfaz aplanada para taras y botones ---
     with st.form(key="form_pesaje", clear_on_submit=True):
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
@@ -662,7 +683,6 @@ with tab_calc:
             fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
             try:
                 with conn.session as s:
-                    # LÓGICA DE ACTUALIZACIÓN AUTOMÁTICA DE BÓVEDA
                     q_bov = text("SELECT COALESCE(SUM(resultado_pue), 0) FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)")
                     total_boveda = float(s.execute(q_bov, {"art": art_sel, "suc": sucursal_in}).scalar() or 0.0)
                     
@@ -702,7 +722,6 @@ with tab_calc:
             except Exception as e: st.error(f"Error al guardar: {e}")
         else: st.error("❌ Error: Revisa los datos ingresados.")
 
-    # 3. Historial del producto oculto hasta abajo
     if art_sel:
         st.divider()
         with st.expander(f"📋 Ver detalle e historial de: {art_sel}", expanded=False):
@@ -782,7 +801,6 @@ with tab_historial:
             else: st.info("No hay pre-conteos guardados en la bóveda.")
     else: st.info(f"No hay pesajes registrados para {sucursal_in} en esta categoría.")
 
-# --- AUTO-FOCO CON JAVASCRIPT ---
 components.html("""
     <script>
     const num_inputs = window.parent.document.querySelectorAll('input[type="number"]');
