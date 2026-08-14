@@ -459,6 +459,19 @@ with tab_calc:
     cat_reg = st.selectbox("📂 Seleccione Categoría de Registro:", list(productos_por_categoria.keys()), key="cat_reg")
     productos_dict_reg = productos_por_categoria[cat_reg]
     
+    # --- Estado para avance automático e ubicación ---
+    if "auto_index" not in st.session_state:
+        st.session_state.auto_index = 0
+    if "ubicacion_pesaje" not in st.session_state:
+        st.session_state.ubicacion_pesaje = "Bodega"
+        
+    st.session_state.ubicacion_pesaje = st.radio(
+        "📍 Ubicación del pesaje:", 
+        ["Bodega", "Piso de Venta"], 
+        horizontal=True, 
+        index=["Bodega", "Piso de Venta"].index(st.session_state.ubicacion_pesaje)
+    )
+    
     with st.expander("🎤 **Ingreso por Voz** (Click para desplegar)", expanded=False):
         audio_bytes = st.audio_input("Di algo como: 0.620 de capacillo chino en contenedor.", key="audio_reg")
         texto_reconocido, texto_filtro = "", ""
@@ -503,27 +516,35 @@ with tab_calc:
     nuevo_art, modo_preconteo = (modo_seleccionado == "Artículo NO listado"), (modo_seleccionado == "PRE-CONTEO MANUAL (Piezas directas)")
     
     if not nuevo_art:
-        art_sel = st.selectbox("Seleccione Artículo (Aplica para registro y desglose):", opciones, index=idx_sugerido, placeholder="Elija un producto...")
+        # Lógica de auto-avance
+        current_index = idx_sugerido if idx_sugerido is not None else st.session_state.auto_index
+        if current_index >= len(opciones): current_index = 0 
+        
+        art_sel = st.selectbox("Seleccione Artículo (Aplica para registro y desglose):", opciones, index=current_index, placeholder="Elija un producto...")
         pue_final = productos_dict_reg.get(art_sel, 1.0) if art_sel else 1.0
     else:
         c_n1, c_n2 = st.columns([2,1])
         with c_n1: art_sel = st.text_input("Nombre del Nuevo Artículo:", value=nombre_limpio_sugerido if nombre_limpio_sugerido else None, placeholder="Ej. CAJA PERSONALIZADA")
         with c_n2: pue_final = st.number_input("Asignar Peso Unitario:", value=pue_sugerido, format="%.4f", placeholder="0.0000")
 
+    # --- Interfaz aplanada para taras rápidas ---
     with st.form(key="form_pesaje", clear_on_submit=True):
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
             cantidad_directa = st.number_input("Cantidad de piezas (Conteo manual):", value=peso_sugerido, step=1.0, placeholder="Ej. 50")
-            peso_bruto, tara_total, formula = 0.0, 0.0, "CONTEO MANUAL DIRECTO"
+            peso_bruto, tara_total = 0.0, 0.0
+            formula = f"[{st.session_state.ubicacion_pesaje.upper()}] CONTEO MANUAL DIRECTO"
         else:
-            peso_bruto = st.number_input("Peso Bruto de Báscula (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
-            with st.expander("🛠️ Configuración de Taras", expanded=True):
-                c1, c2 = st.columns(2)
-                with c1: t_cont = st.checkbox("Contenedor (0.045)", value=t_cont_sugerido)
-                with c2: t_manual = st.number_input("Tara Manual Extra:", value=None, format="%.3f", placeholder="0.000")
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                peso_bruto = st.number_input("⚖️ Peso Bruto (kg):", value=peso_sugerido, format="%.3f", placeholder="0.000")
+            with col2:
+                t_cont = st.checkbox("📦 Tara Contenedor (0.045)", value=t_cont_sugerido)
+            with col3:
+                t_manual = st.number_input("⚖️ Tara Manual:", value=None, format="%.3f", placeholder="0.000")
         
         st.divider()
-        btn_save = st.form_submit_button("📥 CONFIRMAR Y GUARDAR REGISTRO")
+        btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE PRODUCTO")
 
     if btn_save:
         articulo_valido = art_sel is not None and art_sel.strip() != ""
@@ -536,24 +557,20 @@ with tab_calc:
                 tara_total = (0.045 if t_cont else 0) + (t_manual if t_manual is not None else 0.0)
                 is_tinta = "TINTA" in str(art_sel).upper(); offset = 0.030 if is_tinta else 0.0
                 resultado = truncar_dos_decimales(((peso_bruto - tara_total) - offset) / pue_final)
-                formula = f"({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
+                formula = f"[{st.session_state.ubicacion_pesaje.upper()}] ({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
 
         if datos_listos:
             fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
             try:
                 with conn.session as s:
                     # LÓGICA DE ACTUALIZACIÓN AUTOMÁTICA DE BÓVEDA
-                    # 1. Consultar cuánto hay en Bóveda actualmente para este producto
                     q_bov = text("SELECT COALESCE(SUM(resultado_pue), 0) FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)")
                     total_boveda = float(s.execute(q_bov, {"art": art_sel, "suc": sucursal_in}).scalar() or 0.0)
                     
-                    # 2. Si hay bóveda y lo nuevo es menor (o cero), es un consumo directo de lo guardado
                     if total_boveda > 0 and (resultado < total_boveda or resultado == 0):
-                        # Eliminamos bóvedas anteriores y cualquier registro de piso suelto
                         s.execute(text("DELETE FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)"), {"art": art_sel, "suc": sucursal_in})
                         s.execute(text("DELETE FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc"), {"art": art_sel, "suc": sucursal_in})
                         
-                        # Si no es 0, inyectamos la nueva cantidad actualizada
                         if resultado > 0:
                             s.execute(text("""INSERT INTO pesajes_guardados 
                                          (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
@@ -562,10 +579,15 @@ with tab_calc:
                                        "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
                                        "rp": resultado, "df": "[AUTO-AJUSTE BÓVEDA] " + formula})
                         s.commit()
+                        
+                        # Avance Automático
+                        if not nuevo_art:
+                            if st.session_state.auto_index < len(opciones) - 1: st.session_state.auto_index += 1
+                            else: st.session_state.auto_index = 0
+                            
                         st.session_state.show_toast = f"✅ Bóveda auto-ajustada (Se detectó menos cantidad: de {total_boveda} a {resultado})"
                         st.rerun() 
                     
-                    # 3. LÓGICA NORMAL (Si no había bóveda o pesaste MÁS que la bóveda)
                     else:
                         res = s.execute(text("""INSERT INTO pesajes_individuales 
                                      (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
@@ -575,6 +597,12 @@ with tab_calc:
                                    "rp": resultado, "df": formula})
                         id_recien = res.fetchone()[0]
                         s.commit()
+                        
+                        # Avance Automático
+                        if not nuevo_art:
+                            if st.session_state.auto_index < len(opciones) - 1: st.session_state.auto_index += 1
+                            else: st.session_state.auto_index = 0
+                            
                         mostrar_popup_exito(id_recien, art_sel, resultado, sucursal_in, cat_reg)
             except Exception as e: st.error(f"Error al guardar: {e}")
         else: st.error("❌ Error: Revisa los datos ingresados.")
