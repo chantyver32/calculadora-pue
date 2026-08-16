@@ -3,6 +3,7 @@ import pandas as pd
 from sqlalchemy import text
 from datetime import datetime, timedelta
 import pytz
+import math
 import urllib.parse
 import io
 from docx import Document
@@ -124,6 +125,7 @@ with conn.session as s:
     s.execute(text('ALTER TABLE auditoria_stock ADD COLUMN IF NOT EXISTS categoria TEXT;'))
     s.execute(text('ALTER TABLE pesajes_guardados ADD COLUMN IF NOT EXISTS aplicado_en_corte BOOLEAN DEFAULT TRUE;'))
     s.execute(text('ALTER TABLE catalogo_productos ADD COLUMN IF NOT EXISTS ubicacion_conteo TEXT DEFAULT \'Combinado\';'))
+    s.execute(text('ALTER TABLE catalogo_productos ADD COLUMN IF NOT EXISTS redondeo TEXT DEFAULT \'No\';'))
 
     s.commit()
 
@@ -161,7 +163,7 @@ if df_cat_global.empty:
     with conn.session as s:
         for cat, prods in dicc_inicial.items():
             for art, pue in prods.items():
-                s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, 'Combinado') ON CONFLICT DO NOTHING"), 
+                s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo, redondeo) VALUES (:c, :a, :p, 'Combinado', 'No') ON CONFLICT DO NOTHING"), 
                           {"c": cat, "a": art, "p": pue})
         s.commit()
     st.cache_data.clear() 
@@ -298,6 +300,7 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
     df_stock = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
     saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
     
+    diferencia_valida = True
     col_st1, col_st2 = st.columns(2)
     with col_st1:
         stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter", key=f"modal_stock_{id_registro}")
@@ -306,28 +309,37 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
         if stock_teorico is not None:
             diferencia = truncar_dos_decimales(total_real - stock_teorico)
             st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
-            with conn.session as s:
-                s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
-                             VALUES (:suc, :art, :cat, :tr, :stk, :dif)
-                             ON CONFLICT (sucursal, articulo) DO UPDATE 
-                             SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
-                          {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
-                s.commit()
+            
+            if diferencia < 0:
+                diferencia_valida = False
+                st.error("⚠️ Diferencia en rojo. El pesaje se ha omitido/eliminado automáticamente.")
+                with conn.session as s:
+                    s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
+                    s.commit()
+            else:
+                with conn.session as s:
+                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
+                                 VALUES (:suc, :art, :cat, :tr, :stk, :dif)
+                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                 SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
+                              {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                    s.commit()
     
     st.divider()
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Continuar", type="primary", use_container_width=True): st.rerun() 
     with col2:
-        if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
-            with conn.session as s:
-                s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte)
-                             SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, FALSE 
-                             FROM pesajes_individuales WHERE id = :id"""), {"id": id_registro})
-                s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
-                s.commit()
-            st.session_state.show_toast = "✅ Trasladado a la Bóveda."
-            st.rerun()
+        if diferencia_valida:
+            if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
+                with conn.session as s:
+                    s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte)
+                                 SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, FALSE 
+                                 FROM pesajes_individuales WHERE id = :id"""), {"id": id_registro})
+                    s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
+                    s.commit()
+                st.session_state.show_toast = "✅ Trasladado a la Bóveda."
+                st.rerun()
 
 @st.dialog("⏭️ Confirmar Avance")
 def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal):
@@ -350,47 +362,11 @@ def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal):
     if is_complete:
         st.success("🎉 ¡Has completado todas las categorías en todas las ubicaciones!")
         
-        # BOTÓN ÚNICO: Actualiza todo el stock dinámicamente
-        if st.button("✅ ACTUALIZAR STOCK REAL (Todas las categorías)", type="primary", use_container_width=True):
-            with conn.session as s:
-                for cat in orden_categorias:
-                    q_pesajes = text('''
-                        SELECT articulo, SUM(resultado_pue) as total_pesado 
-                        FROM (
-                            SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
-                            UNION ALL
-                            SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
-                        ) as combinados GROUP BY articulo
-                    ''')
-                    res_pesajes = s.execute(q_pesajes, {"suc": sucursal, "cat": cat}).mappings().all()
-                    
-                    q_stock = text("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat")
-                    res_stock = s.execute(q_stock, {"suc": sucursal, "cat": cat}).mappings().all()
-                    dict_stock = {row['articulo']: row['stock'] for row in res_stock}
-                    
-                    for p in res_pesajes:
-                        art = p['articulo']
-                        tot_pesado = float(p['total_pesado'] or 0)
-                        stock_ant = float(dict_stock.get(art, 0))
-                        nuevo_stock = stock_ant - tot_pesado
-                        
-                        s.execute(text("""
-                            INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
-                            VALUES (:suc, :art, :cat, :stk, 0, 0)
-                            ON CONFLICT (sucursal, articulo) DO UPDATE 
-                            SET stock = EXCLUDED.stock
-                        """), {"suc": sucursal, "art": art, "cat": cat, "stk": nuevo_stock})
-                        
-                    s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal, "cat": cat})
-                    s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal, "cat": cat})
-                s.commit()
-            
-            st.session_state.show_toast = "✅ Stock de todas las categorías actualizado para mañana."
+        if st.button("🔄 Finalizar y Volver al inicio", type="primary", use_container_width=True):
             st.session_state.pending_transition = False
             st.session_state.cat_idx = 0
             st.session_state.ubi_idx = 0
             st.session_state.auto_index = 0
-            st.cache_data.clear()
             st.rerun()
 
     else:
@@ -494,10 +470,9 @@ with tab_calc:
         if pd.isna(ubi_item) or ubi_item == "":
             ubi_item = "Combinado"
         if ubi_item == "Combinado" or ubi_item.lower() == ubicacion_actual.lower():
-            opciones.append(row['articulo'])
+            if row['articulo'] not in opciones:
+                opciones.append(row['articulo'])
             
-    opciones = sorted(list(set(opciones)))
-    
     def avanzar_flujo():
         if len(opciones) > 0 and st.session_state.auto_index < len(opciones) - 1:
             st.session_state.auto_index += 1
@@ -559,7 +534,16 @@ with tab_calc:
             if datos_listos:
                 tara_total = (0.045 if t_cont else 0) + (t_manual if t_manual is not None else 0.0)
                 is_tinta = "TINTA" in str(art_sel).upper(); offset = 0.030 if is_tinta else 0.0
-                resultado = truncar_dos_decimales(((peso_bruto - tara_total) - offset) / pue_final)
+                calc_val = ((peso_bruto - tara_total) - offset) / pue_final
+                
+                if not nuevo_art:
+                    df_match = df_cat_filtrado[df_cat_filtrado['articulo'] == art_sel]
+                    red_val = str(df_match['redondeo'].values[0]) if not df_match.empty and 'redondeo' in df_match.columns else "No"
+                    
+                    if red_val.lower() in ['sí', 'si', 'yes', 'true']:
+                        calc_val = float(math.floor(calc_val + 0.5))
+                
+                resultado = truncar_dos_decimales(calc_val)
                 formula = f"[{ubicacion_actual.upper()}] ({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
 
         if datos_listos:
@@ -610,11 +594,28 @@ with tab_calc:
         with st.expander(f"📋 Ver detalle e historial de: {art_sel}", expanded=False):
             df_a = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
             df_g = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
-            if not df_g.empty: df_g['detalle_formula'] = "[GUARDADO] " + df_g['detalle_formula'].astype(str)
-            df_comb = pd.concat([df_a, df_g], ignore_index=True)
-            if not df_comb.empty:
-                st.dataframe(df_comb[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
-            else: st.info("No hay pesajes registrados para este artículo.")
+            
+            if not df_a.empty:
+                st.markdown("**🔹 Sesión Actual (Puedes borrar seleccionando la fila y dando clic al basurero)**")
+                edited_a = st.data_editor(
+                    df_a[['id', 'detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), 
+                    num_rows="dynamic", hide_index=True, disabled=["Operación", "Cantidad"], key=f"del_a_{art_sel}", use_container_width=True
+                )
+                ids_del = set(df_a['id']) - set(edited_a['id'])
+                if ids_del:
+                    if st.button("🗑️ Confirmar Borrado de Pesaje(s)", use_container_width=True):
+                        with conn.session as s:
+                            for d_id in ids_del: s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": int(d_id)})
+                            s.commit()
+                        st.session_state.show_toast = "✅ Pesaje eliminado."
+                        st.rerun()
+            else:
+                st.info("No hay pesajes en la sesión actual para este artículo.")
+
+            if not df_g.empty:
+                st.markdown("**🔹 Bóveda (Guardados previamente)**")
+                df_g['detalle_formula'] = "[GUARDADO] " + df_g['detalle_formula'].astype(str)
+                st.dataframe(df_g[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
 
 
 # --- TAB 2: STOCK REAL POR CATEGORÍAS (AHORA STOCK REAL) ---
@@ -728,14 +729,17 @@ with tab_stock:
     # --- ADMINISTRADOR DE CATÁLOGO DINÁMICO ---
     st.divider()
     with st.expander(f"📝 Administrar Catálogo: {categoria_activa_stock}", expanded=False):
-        st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación.")
+        st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación sin saltar de pestaña.")
         
         df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
-        df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue', 'ubicacion_conteo']].copy()
+        df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue', 'ubicacion_conteo', 'redondeo']].copy()
         
         if 'ubicacion_conteo' not in df_cat_edit.columns: 
             df_cat_edit['ubicacion_conteo'] = "Combinado"
         df_cat_edit['ubicacion_conteo'] = df_cat_edit['ubicacion_conteo'].fillna("Combinado")
+        if 'redondeo' not in df_cat_edit.columns:
+            df_cat_edit['redondeo'] = "No"
+        df_cat_edit['redondeo'] = df_cat_edit['redondeo'].fillna("No")
         
         edited_catalogo = st.data_editor(
             df_cat_edit,
@@ -752,11 +756,18 @@ with tab_stock:
                     options=["Bodega", "Piso de Venta", "Combinado"],
                     required=True,
                     default="Combinado"
+                ),
+                "redondeo": st.column_config.SelectboxColumn(
+                    "Redondeo",
+                    help="¿Redondear a entero? (.50 sube, < .50 baja)",
+                    options=["Sí", "No"],
+                    required=True,
+                    default="No"
                 )
             }
         )
         
-        if st.button(f"💾 Guardar Catálogo y Actualizar Pestañas", type="secondary", use_container_width=True):
+        if st.button(f"💾 Guardar Catálogo y Actualizar", type="secondary", use_container_width=True):
             with conn.session as s:
                 s.execute(text("DELETE FROM catalogo_productos WHERE categoria = :cat"), {"cat": categoria_activa_stock})
                 
@@ -765,13 +776,13 @@ with tab_stock:
                     if art_val and not pd.isna(row['pue']):
                         pue_val = float(row['pue'])
                         ubi_val = str(row['ubicacion_conteo']) if pd.notna(row['ubicacion_conteo']) else "Combinado"
+                        red_val = str(row['redondeo']) if pd.notna(row['redondeo']) else "No"
                         
-                        s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, :u) ON CONFLICT DO NOTHING"), 
-                                  {"c": categoria_activa_stock, "a": art_val, "p": pue_val, "u": ubi_val})
+                        s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo, redondeo) VALUES (:c, :a, :p, :u, :r) ON CONFLICT DO NOTHING"), 
+                                  {"c": categoria_activa_stock, "a": art_val, "p": pue_val, "u": ubi_val, "r": red_val})
                 s.commit()
             st.cache_data.clear() 
-            st.session_state.show_toast = "✅ Catálogo guardado. La aplicación se ha actualizado."
-            st.rerun()
+            st.toast("✅ Catálogo guardado correctamente. Continúa aquí o ve a otra pestaña para verlo reflejado.")
 
 # --- TAB 3: EXPORTACIÓN Y BÓVEDA (AHORA REPORTES) ---
 with tab_historial:
