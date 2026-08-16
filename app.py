@@ -156,7 +156,6 @@ dicc_inicial = {
     }
 }
 
-# AJUSTE 1: Aplicando Caché (ttl="1h") al catálogo global
 df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
 if df_cat_global.empty:
     with conn.session as s:
@@ -165,7 +164,7 @@ if df_cat_global.empty:
                 s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, 'Combinado') ON CONFLICT DO NOTHING"), 
                           {"c": cat, "a": art, "p": pue})
         s.commit()
-    st.cache_data.clear() # Limpia caché al insertar iniciales
+    st.cache_data.clear() 
     df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
 
 productos_por_categoria = {}
@@ -197,7 +196,6 @@ def verificar_login():
                 btn_login = st.form_submit_button("Iniciar Sesión", use_container_width=True, type="primary")
                 
                 if btn_login:
-                    # AJUSTE 2: Aplicando Caché al login (ttl="10m")
                     df_check = conn.query("SELECT * FROM usuarios WHERE username = :u AND password = :p", 
                                           params={"u": usuario_input.strip(), "p": password_input}, ttl="10m")
                     if not df_check.empty:
@@ -331,7 +329,6 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
             st.session_state.show_toast = "✅ Trasladado a la Bóveda."
             st.rerun()
 
-# AJUSTE 3: Agregando la nueva función Global de Actualización de Stock
 @st.dialog("⏭️ Confirmar Avance")
 def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal):
     idx_cat = st.session_state.cat_idx
@@ -353,7 +350,7 @@ def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal):
     if is_complete:
         st.success("🎉 ¡Has completado todas las categorías en todas las ubicaciones!")
         
-        # NUEVO BOTÓN: Actualiza todo el stock dinámicamente
+        # BOTÓN ÚNICO: Actualiza todo el stock dinámicamente
         if st.button("✅ ACTUALIZAR STOCK REAL (Todas las categorías)", type="primary", use_container_width=True):
             with conn.session as s:
                 for cat in orden_categorias:
@@ -396,12 +393,6 @@ def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal):
             st.cache_data.clear()
             st.rerun()
 
-        if st.button("Finalizar y reiniciar recorrido (Sin actualizar)", use_container_width=True):
-            st.session_state.pending_transition = False
-            st.session_state.cat_idx = 0
-            st.session_state.ubi_idx = 0
-            st.session_state.auto_index = 0
-            st.rerun()
     else:
         st.write(f"Terminaste con todos los productos de **{orden_categorias[idx_cat]}**.")
         st.info(f"¿Deseas pasar a **{orden_categorias[next_cat_idx]}** en **{orden_ubicaciones[next_ubi_idx]}**?")
@@ -494,7 +485,6 @@ with tab_calc:
     categoria_actual = orden_categorias[st.session_state.cat_idx]
     ubicacion_actual = orden_ubicaciones[st.session_state.ubi_idx]
     
-    # Aplicando caché aquí también
     df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h") 
     df_cat_filtrado = df_cat_global[df_cat_global['categoria'] == categoria_actual]
     
@@ -740,7 +730,6 @@ with tab_stock:
     with st.expander(f"📝 Administrar Catálogo: {categoria_activa_stock}", expanded=False):
         st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación.")
         
-        # Aplicando caché aquí también
         df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
         df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue', 'ubicacion_conteo']].copy()
         
@@ -780,7 +769,7 @@ with tab_stock:
                         s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, :u) ON CONFLICT DO NOTHING"), 
                                   {"c": categoria_activa_stock, "a": art_val, "p": pue_val, "u": ubi_val})
                 s.commit()
-            st.cache_data.clear() # AJUSTE 4: Limpiamos caché para refrescar catálogo
+            st.cache_data.clear() 
             st.session_state.show_toast = "✅ Catálogo guardado. La aplicación se ha actualizado."
             st.rerun()
 
