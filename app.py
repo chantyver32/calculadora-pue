@@ -156,7 +156,8 @@ dicc_inicial = {
     }
 }
 
-df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0)
+# AJUSTE 1: Aplicando Caché (ttl="1h") al catálogo global
+df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
 if df_cat_global.empty:
     with conn.session as s:
         for cat, prods in dicc_inicial.items():
@@ -164,7 +165,8 @@ if df_cat_global.empty:
                 s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, 'Combinado') ON CONFLICT DO NOTHING"), 
                           {"c": cat, "a": art, "p": pue})
         s.commit()
-    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0)
+    st.cache_data.clear() # Limpia caché al insertar iniciales
+    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
 
 productos_por_categoria = {}
 for _, row in df_cat_global.iterrows():
@@ -195,8 +197,9 @@ def verificar_login():
                 btn_login = st.form_submit_button("Iniciar Sesión", use_container_width=True, type="primary")
                 
                 if btn_login:
+                    # AJUSTE 2: Aplicando Caché al login (ttl="10m")
                     df_check = conn.query("SELECT * FROM usuarios WHERE username = :u AND password = :p", 
-                                          params={"u": usuario_input.strip(), "p": password_input}, ttl=0)
+                                          params={"u": usuario_input.strip(), "p": password_input}, ttl="10m")
                     if not df_check.empty:
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
@@ -328,8 +331,9 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
             st.session_state.show_toast = "✅ Trasladado a la Bóveda."
             st.rerun()
 
+# AJUSTE 3: Agregando la nueva función Global de Actualización de Stock
 @st.dialog("⏭️ Confirmar Avance")
-def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones):
+def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal):
     idx_cat = st.session_state.cat_idx
     idx_ubi = st.session_state.ubi_idx
     
@@ -348,7 +352,51 @@ def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones):
 
     if is_complete:
         st.success("🎉 ¡Has completado todas las categorías en todas las ubicaciones!")
-        if st.button("Finalizar y reiniciar recorrido", use_container_width=True, type="primary"):
+        
+        # NUEVO BOTÓN: Actualiza todo el stock dinámicamente
+        if st.button("✅ ACTUALIZAR STOCK REAL (Todas las categorías)", type="primary", use_container_width=True):
+            with conn.session as s:
+                for cat in orden_categorias:
+                    q_pesajes = text('''
+                        SELECT articulo, SUM(resultado_pue) as total_pesado 
+                        FROM (
+                            SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                            UNION ALL
+                            SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+                        ) as combinados GROUP BY articulo
+                    ''')
+                    res_pesajes = s.execute(q_pesajes, {"suc": sucursal, "cat": cat}).mappings().all()
+                    
+                    q_stock = text("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat")
+                    res_stock = s.execute(q_stock, {"suc": sucursal, "cat": cat}).mappings().all()
+                    dict_stock = {row['articulo']: row['stock'] for row in res_stock}
+                    
+                    for p in res_pesajes:
+                        art = p['articulo']
+                        tot_pesado = float(p['total_pesado'] or 0)
+                        stock_ant = float(dict_stock.get(art, 0))
+                        nuevo_stock = stock_ant - tot_pesado
+                        
+                        s.execute(text("""
+                            INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
+                            VALUES (:suc, :art, :cat, :stk, 0, 0)
+                            ON CONFLICT (sucursal, articulo) DO UPDATE 
+                            SET stock = EXCLUDED.stock
+                        """), {"suc": sucursal, "art": art, "cat": cat, "stk": nuevo_stock})
+                        
+                    s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal, "cat": cat})
+                    s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal, "cat": cat})
+                s.commit()
+            
+            st.session_state.show_toast = "✅ Stock de todas las categorías actualizado para mañana."
+            st.session_state.pending_transition = False
+            st.session_state.cat_idx = 0
+            st.session_state.ubi_idx = 0
+            st.session_state.auto_index = 0
+            st.cache_data.clear()
+            st.rerun()
+
+        if st.button("Finalizar y reiniciar recorrido (Sin actualizar)", use_container_width=True):
             st.session_state.pending_transition = False
             st.session_state.cat_idx = 0
             st.session_state.ubi_idx = 0
@@ -427,7 +475,7 @@ with tab_calc:
     if "pending_transition" not in st.session_state: st.session_state.pending_transition = False
 
     if st.session_state.pending_transition:
-        dialog_confirmar_transicion(orden_categorias, orden_ubicaciones)
+        dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal_in)
 
     with st.expander("⚙️ Ajustes", expanded=False):
         new_cat = st.selectbox("📂 Seleccione Categoría:", orden_categorias, index=st.session_state.cat_idx)
@@ -446,8 +494,8 @@ with tab_calc:
     categoria_actual = orden_categorias[st.session_state.cat_idx]
     ubicacion_actual = orden_ubicaciones[st.session_state.ubi_idx]
     
-    # Filtro automático según la base de datos para la ruta inteligente
-    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0) 
+    # Aplicando caché aquí también
+    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h") 
     df_cat_filtrado = df_cat_global[df_cat_global['categoria'] == categoria_actual]
     
     opciones = []
@@ -692,8 +740,8 @@ with tab_stock:
     with st.expander(f"📝 Administrar Catálogo: {categoria_activa_stock}", expanded=False):
         st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación.")
         
-        # Nos aseguramos de obtener la base de datos fresca para evitar desincronizaciones 
-        df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl=0)
+        # Aplicando caché aquí también
+        df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
         df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue', 'ubicacion_conteo']].copy()
         
         if 'ubicacion_conteo' not in df_cat_edit.columns: 
@@ -732,6 +780,7 @@ with tab_stock:
                         s.execute(text("INSERT INTO catalogo_productos (categoria, articulo, pue, ubicacion_conteo) VALUES (:c, :a, :p, :u) ON CONFLICT DO NOTHING"), 
                                   {"c": categoria_activa_stock, "a": art_val, "p": pue_val, "u": ubi_val})
                 s.commit()
+            st.cache_data.clear() # AJUSTE 4: Limpiamos caché para refrescar catálogo
             st.session_state.show_toast = "✅ Catálogo guardado. La aplicación se ha actualizado."
             st.rerun()
 
