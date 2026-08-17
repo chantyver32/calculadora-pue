@@ -101,7 +101,6 @@ if not db_url:
 
 conn = st.connection("supabase", type="sql", url=db_url)
 
-# ORDEN ESTRICTO GLOBAL APLICABLE EN TODA LA PLATAFORMA
 ORDEN_CATEGORIAS_OFICIAL = ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]
 
 with conn.session as s:
@@ -286,8 +285,23 @@ def formato_estricto(valor):
     entero, decimal = s.split('.')
     return f"{entero}.{decimal[:2]}"
 
-@st.dialog("✅ Registrado")
-def mostrar_popup_exito(articulo, resultado, sucursal, categoria, peso_bruto, tara, pue, formula, nuevo_art, modo_preconteo, fecha_mexico, num_opciones):
+@st.dialog("✅ Registrado", width="large")
+def mostrar_popup_exito():
+    # Extraemos los datos guardados temporalmente en el estado
+    datos = st.session_state.item_a_guardar
+    articulo = datos["articulo"]
+    resultado = datos["resultado"]
+    sucursal = datos["sucursal"]
+    categoria = datos["categoria"]
+    peso_bruto = datos["peso_bruto"]
+    tara = datos["tara"]
+    pue = datos["pue"]
+    formula = datos["formula"]
+    nuevo_art = datos["nuevo_art"]
+    modo_preconteo = datos["modo_preconteo"]
+    fecha_mexico = datos["fecha_mexico"]
+    num_opciones = datos["num_opciones"]
+
     st.markdown(f"### 📦 {articulo}")
     
     # Consultamos datos existentes para armar el total
@@ -311,6 +325,7 @@ def mostrar_popup_exito(articulo, resultado, sucursal, categoria, peso_bruto, ta
     diferencia_valida = True
     col_st1, col_st2 = st.columns(2)
     with col_st1:
+        # Clave única para evitar errores de actualización al recargar
         stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter", key=f"modal_stock_{articulo}")
         
     with col_st2:
@@ -323,7 +338,7 @@ def mostrar_popup_exito(articulo, resultado, sucursal, categoria, peso_bruto, ta
                 st.error("⚠️ Diferencia en rojo. El pesaje será omitido (no se guardará).")
     
     st.divider()
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([1, 1, 1])
     
     def avanzar_y_cerrar():
         if not nuevo_art:
@@ -331,8 +346,16 @@ def mostrar_popup_exito(articulo, resultado, sucursal, categoria, peso_bruto, ta
                 st.session_state.auto_index += 1
             else:
                 st.session_state.pending_transition = True
+        # Eliminamos el estado del diálogo para que no vuelva a abrir
+        del st.session_state.item_a_guardar
 
     with col1:
+        # BOTÓN NUEVO: Permite cancelar explícitamente sin avanzar el tour
+        if st.button("❌ Cancelar", type="secondary", use_container_width=True):
+            del st.session_state.item_a_guardar
+            st.rerun()
+
+    with col2:
         if st.button("Continuar", type="primary", use_container_width=True):
             if diferencia_valida:
                 with conn.session as s:
@@ -354,7 +377,7 @@ def mostrar_popup_exito(articulo, resultado, sucursal, categoria, peso_bruto, ta
             avanzar_y_cerrar()
             st.rerun() 
             
-    with col2:
+    with col3:
         if diferencia_valida:
             if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
                 with conn.session as s:
@@ -551,13 +574,32 @@ with tab_calc:
         
         col_izq, col_centro, col_der = st.columns([1, 2, 1])
         with col_centro:
-            btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary", use_container_width=True)
-            btn_skip = st.form_submit_button("⏭️ OMITIR", use_container_width=True)
-
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary", use_container_width=True)
+            with col_b2:
+                btn_skip = st.form_submit_button("⏭️ OMITIR (0)", use_container_width=True)
+                
     if btn_skip:
-        if not nuevo_art:
-            avanzar_flujo()
-        st.rerun()
+        if art_sel is not None and art_sel.strip() != "":
+            fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                with conn.session as s:
+                    s.execute(text("""INSERT INTO pesajes_individuales 
+                                 (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                                 VALUES (:suc, :fh, :art, :cat, 0, 0, :pue, 0, '[OMITIDO] Registro en 0')"""),
+                              {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": categoria_actual, "pue": pue_final if not modo_preconteo else 0.0})
+                    s.commit()
+                
+                if not nuevo_art:
+                    avanzar_flujo()
+                    
+                st.session_state.show_toast = f"⏭️ {art_sel} omitido (0 registrados)."
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al omitir: {e}")
+        else:
+            st.error("❌ Selecciona un artículo primero.")
 
     if btn_save:
         articulo_valido = art_sel is not None and art_sel.strip() != ""
@@ -608,15 +650,29 @@ with tab_calc:
                         st.rerun() 
                     
                     else:
-                        mostrar_popup_exito(
-                            art_sel, resultado, sucursal_in, categoria_actual, 
-                            peso_bruto if not modo_preconteo else 0.0, 
-                            tara_total if not modo_preconteo else 0.0, 
-                            pue_final if not modo_preconteo else 0.0, 
-                            formula, nuevo_art, modo_preconteo, fecha_mexico, len(opciones)
-                        )
+                        # En lugar de mostrarlo directo, lo guardamos en caché temporal
+                        # para que soporte la recarga sin desaparecer.
+                        st.session_state.item_a_guardar = {
+                            "articulo": art_sel,
+                            "resultado": resultado,
+                            "sucursal": sucursal_in,
+                            "categoria": categoria_actual,
+                            "peso_bruto": peso_bruto if not modo_preconteo else 0.0,
+                            "tara": tara_total if not modo_preconteo else 0.0,
+                            "pue": pue_final if not modo_preconteo else 0.0,
+                            "formula": formula,
+                            "nuevo_art": nuevo_art,
+                            "modo_preconteo": modo_preconteo,
+                            "fecha_mexico": fecha_mexico,
+                            "num_opciones": len(opciones)
+                        }
+                        st.rerun() # Dispara la recarga controlada
             except Exception as e: st.error(f"Error al procesar: {e}")
         else: st.error("❌ Error: Revisa los datos ingresados.")
+        
+    # El dialog se llamará únicamente cuando existan datos en caché listos para ser verificados
+    if "item_a_guardar" in st.session_state:
+        mostrar_popup_exito()
 
     if art_sel:
         st.divider()
