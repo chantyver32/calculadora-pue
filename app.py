@@ -579,7 +579,7 @@ with tab_calc:
             with col_b1:
                 btn_save = st.form_submit_button("📥 GUARDAR Y SIGUIENTE", type="primary", use_container_width=True)
             with col_b2:
-                btn_skip = st.form_submit_button("⏭️ OMITIR (0)", use_container_width=True)
+                btn_skip = st.form_submit_button("⏭️ OMITIR", use_container_width=True)
                 
     if btn_skip:
         if art_sel is not None and art_sel.strip() != "":
@@ -595,7 +595,7 @@ with tab_calc:
                 if not nuevo_art:
                     avanzar_flujo()
                     
-                st.session_state.show_toast = f"⏭️ {art_sel} omitido (0 registrados)."
+                st.session_state.show_toast = f"⏭️ {art_sel} omitido)."
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al omitir: {e}")
