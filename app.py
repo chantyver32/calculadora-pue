@@ -17,6 +17,7 @@ from docx.oxml.ns import qn
 import re  
 import os
 import streamlit.components.v1 as components
+import PyPDF2
 
 # ------------------ 1. CONFIGURACIÓN GENERAL ------------------
 st.set_page_config(page_title="Insumos Champlitte", page_icon="⚖️", layout="wide")
@@ -698,11 +699,48 @@ with tab_calc:
                 df_g['detalle_formula'] = "[GUARDADO] " + df_g['detalle_formula'].astype(str)
                 st.dataframe(df_g[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
 
-
-# --- TAB 2: STOCK REAL POR CATEGORÍAS (AHORA STOCK REAL REPLICADO PARA CADA UNA) ---
+# --- TAB 2: STOCK REAL POR CATEGORÍAS ---
 with tab_stock:
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
+
+    # ---------------- NUEVO BLOQUE LECTOR DE PDF ----------------
+    with st.expander("📄 Subir PDF del Sistema (Actualizar Stock Inicial Automáticamente)", expanded=False):
+        st.info("Sube el PDF generado por tu sistema. El algoritmo buscará los nombres de los artículos y extraerá la cantidad de stock automáticamente.")
+        archivo_pdf = st.file_uploader("Sube el archivo PDF aquí:", type=["pdf"], key="pdf_uploader_stock")
+        
+        if archivo_pdf and st.button("🔄 Leer PDF y Actualizar Todo", type="primary", use_container_width=True):
+            try:
+                lector = PyPDF2.PdfReader(archivo_pdf)
+                texto_pdf = ""
+                for pagina in lector.pages:
+                    texto_pdf += pagina.extract_text() + "\n"
+                
+                with conn.session as s:
+                    actualizados = 0
+                    df_cat_full = conn.query("SELECT * FROM catalogo_productos", ttl=0)
+                    
+                    for _, row in df_cat_full.iterrows():
+                        art = str(row['articulo'])
+                        cat_art = str(row['categoria'])
+                        # Busca el nombre del artículo seguido de espacios/guiones y luego captura el número
+                        patron = re.escape(art) + r"[\s\.\-_:]+([0-9]+(?:\.[0-9]+)?)"
+                        match = re.search(patron, texto_pdf, re.IGNORECASE)
+                        
+                        if match:
+                            nuevo_stk = float(match.group(1))
+                            s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
+                                         VALUES (:suc, :art, :cat, :stk, 0, 0)
+                                         ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                         SET stock = EXCLUDED.stock, categoria = EXCLUDED.categoria"""), 
+                                      {"suc": sucursal_in, "art": art, "cat": cat_art, "stk": nuevo_stk})
+                            actualizados += 1
+                    s.commit()
+                st.session_state.show_toast = f"✅ ¡Se actualizaron {actualizados} productos leyendo el PDF!"
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error al procesar el PDF: {e}. Asegúrate de que el PDF contiene texto seleccionable.")
+    # -----------------------------------------------------------
 
     for categoria_activa_stock in ORDEN_CATEGORIAS_OFICIAL:
         st.markdown(f"### 📂 Categoría: {categoria_activa_stock}")
@@ -938,8 +976,8 @@ with tab_historial:
 
 # --- TAB 4: REPORTES VISUALES Y ACTUALIZACIÓN GLOBAL ---
 with tab_reportes:
-    st.markdown("### 📊 Reportes Visuales (Bajas Confirmadas)")
-    st.markdown("Aquí se visualizan únicamente los insumos que fueron pesados y tienen una diferencia para dar de baja.")
+    st.markdown("### 📊 Reportes Visuales (Bajas Confirmadas y Esquema Físico)")
+    st.markdown("Aquí se visualiza el inventario del sistema, cómo quedó el físico, y la cantidad a dar de baja.")
     
     fecha_reporte = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
     
@@ -975,6 +1013,8 @@ with tab_reportes:
         df_auditoria = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria}, ttl=0)
         
         df_final = pd.merge(df_pesados, df_auditoria, on="articulo", how="left").fillna(0.0)
+        
+        # CÁLCULO DE LA CANTIDAD A RESTAR
         df_final["baja_real"] = df_final["stock"] - df_final["total_pesado"]
         
         datos_pdf.append({"categoria": categoria, "df": df_final})
@@ -988,10 +1028,11 @@ with tab_reportes:
             
             <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
                 <thead>
-                    <tr style="background-color: #8B1A20; color: white; font-size: 14px;">
+                    <tr style="background-color: #8B1A20; color: white; font-size: 13px;">
                         <th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
-                        <th style="padding: 12px; text-align: center;">STOCK ANT.</th>
-                        <th style="padding: 12px; text-align: center; border-top-right-radius: 8px;">CANTIDAD PESADA</th>
+                        <th style="padding: 12px; text-align: center;">SISTEMA (ANT.)</th>
+                        <th style="padding: 12px; text-align: center;">FÍSICO (CÓMO QUEDA)</th>
+                        <th style="padding: 12px; text-align: center; border-top-right-radius: 8px;">A RESTAR (BAJA)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1003,7 +1044,8 @@ with tab_reportes:
                 <tr style="background-color: {bg_color}; font-size: 14px; border-bottom: 1px solid #eee;">
                     <td style="padding: 12px; color: #333;">{row['articulo']}</td>
                     <td style="padding: 12px; text-align: center; color: #666;">{formato_estricto(row['stock'])}</td>
-                    <td style="padding: 12px; text-align: center; color: #8B1A20; font-weight: bold;">{formato_estricto(row['total_pesado'])}</td>
+                    <td style="padding: 12px; text-align: center; color: #1f77b4; font-weight: bold;">{formato_estricto(row['total_pesado'])}</td>
+                    <td style="padding: 12px; text-align: center; color: #8B1A20; font-weight: bold;">{formato_estricto(row['baja_real'])}</td>
                 </tr>
             """
             
@@ -1032,7 +1074,7 @@ with tab_reportes:
                 pdf.cell(0, 10, f"Champlitte {sucursal_in}", align="C", new_x="LMARGIN", new_y="NEXT")
                 pdf.set_font("Helvetica", size=10)
                 pdf.set_text_color(85, 85, 85)
-                pdf.cell(0, 5, "PASTELERÍA - REPORTE DE INSUMOS", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 5, "PASTELERÍA - REPORTE DE INSUMOS FÍSICOS Y BAJAS", align="C", new_x="LMARGIN", new_y="NEXT")
                 pdf.cell(0, 5, fecha_reporte, align="C", new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(5)
                 
@@ -1046,13 +1088,15 @@ with tab_reportes:
                     
                     pdf.set_fill_color(139, 26, 32)
                     pdf.set_text_color(255, 255, 255)
-                    pdf.set_font("Helvetica", style="B", size=10)
-                    pdf.cell(100, 8, "PRODUCTO", border=1, fill=True)
-                    pdf.cell(45, 8, "STOCK ANT.", border=1, align="C", fill=True)
-                    pdf.cell(45, 8, "CANT. PESADA", border=1, align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
+                    pdf.set_font("Helvetica", style="B", size=9)
+                    # Ajuste de las 4 columnas
+                    pdf.cell(85, 8, "PRODUCTO", border=1, fill=True)
+                    pdf.cell(35, 8, "SISTEMA", border=1, align="C", fill=True)
+                    pdf.cell(35, 8, "CANT. FÍSICA", border=1, align="C", fill=True)
+                    pdf.cell(35, 8, "A RESTAR", border=1, align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
                     
                     pdf.set_text_color(0, 0, 0)
-                    pdf.set_font("Helvetica", size=9)
+                    pdf.set_font("Helvetica", size=8)
                     fill = False
                     for idx, row in df_sec.iterrows():
                         if fill:
@@ -1060,11 +1104,14 @@ with tab_reportes:
                         else:
                             pdf.set_fill_color(255, 255, 255)
                             
-                        pdf.cell(100, 8, str(row['articulo'])[:50], border=1, fill=fill)
-                        pdf.cell(45, 8, formato_estricto(row['stock']), border=1, align="C", fill=fill)
+                        pdf.cell(85, 8, str(row['articulo'])[:45], border=1, fill=fill)
+                        pdf.cell(35, 8, formato_estricto(row['stock']), border=1, align="C", fill=fill)
                         
-                        pdf.set_text_color(139, 26, 32)
-                        pdf.cell(45, 8, formato_estricto(row['total_pesado']), border=1, align="C", fill=fill, new_x="LMARGIN", new_y="NEXT")
+                        pdf.set_text_color(31, 119, 180) # Color azul para el físico
+                        pdf.cell(35, 8, formato_estricto(row['total_pesado']), border=1, align="C", fill=fill)
+                        
+                        pdf.set_text_color(139, 26, 32) # Color rojo para la baja
+                        pdf.cell(35, 8, formato_estricto(row['baja_real']), border=1, align="C", fill=fill, new_x="LMARGIN", new_y="NEXT")
                         pdf.set_text_color(0, 0, 0)
                         
                         fill = not fill
@@ -1074,7 +1121,7 @@ with tab_reportes:
 
             pdf_bytes = generar_pdf_reporte()
             st.download_button(
-                label="📄 Descargar Reporte en PDF",
+                label="📄 Descargar Reporte Completo en PDF",
                 data=pdf_bytes,
                 file_name=f"Reporte_Insumos_{sucursal_in.replace(' ', '_')}.pdf",
                 mime="application/pdf",
@@ -1124,4 +1171,3 @@ components.html("""
     }, 600); 
     </script>
 """, height=0)
-
