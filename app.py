@@ -751,16 +751,16 @@ with tab_stock:
             df_stock_master["desglose_pesada"] = "0.00"
 
         df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
-        df_stock_master["cantidad_actual"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
+        df_stock_master["cantidad_a_restar"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
 
         df_stock_display = df_stock_master[[
-            "stock", "articulo", "desglose_pesada", "total_pesado", "cantidad_actual"
+            "stock", "articulo", "desglose_pesada", "cantidad_a_restar", "total_pesado"
         ]].rename(columns={
             "stock": "Cantidad Anterior",
             "articulo": "Producto",
             "desglose_pesada": "Cantidad Pesada",
-            "total_pesado": "Cantidad a Restar",
-            "cantidad_actual": "Stock Actualizado"
+            "cantidad_a_restar": "Cantidad a Restar",
+            "total_pesado": "Stock Actualizado"
         })
 
         with st.expander(f"📦 Tabla de Stock Real - {categoria_activa_stock}", expanded=False):
@@ -791,7 +791,7 @@ with tab_stock:
                     articulos_con_pesaje = df_stock_master[df_stock_master["total_pesado"] > 0]
                     for _, row in articulos_con_pesaje.iterrows():
                         art = row["articulo"]
-                        nueva_base = row["cantidad_actual"]
+                        nueva_base = row["total_pesado"]
                         s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
                                      VALUES (:suc, :art, :cat, :stk, 0, 0)
                                      ON CONFLICT (sucursal, articulo) DO UPDATE 
