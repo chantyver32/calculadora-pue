@@ -90,7 +90,7 @@ if "show_toast" in st.session_state:
     st.toast(st.session_state.show_toast)
     del st.session_state.show_toast
 
-# ------------------ 2. CONEXIÓN A SUPABASE ------------------
+# ------------------ 2. CONEXIÓN A SUPABASE Y ORDENAMIENTO OFICIAL ------------------
 db_url = os.environ.get("SUPABASE_URL")
 if not db_url:
     try:
@@ -100,6 +100,9 @@ if not db_url:
         st.stop() 
 
 conn = st.connection("supabase", type="sql", url=db_url)
+
+# ORDEN ESTRICTO GLOBAL APLICABLE EN TODA LA PLATAFORMA
+ORDEN_CATEGORIAS_OFICIAL = ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]
 
 with conn.session as s:
     s.execute(text('''CREATE TABLE IF NOT EXISTS pesajes_individuales 
@@ -176,7 +179,7 @@ for _, row in df_cat_global.iterrows():
         productos_por_categoria[c] = {}
     productos_por_categoria[c][row['articulo']] = row['pue']
 
-for c in ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]:
+for c in ORDEN_CATEGORIAS_OFICIAL:
     if c not in productos_por_categoria:
         productos_por_categoria[c] = {}
 
@@ -284,14 +287,19 @@ def formato_estricto(valor):
     return f"{entero}.{decimal[:2]}"
 
 @st.dialog("✅ Registrado")
-def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categoria):
+def mostrar_popup_exito(articulo, resultado, sucursal, categoria, peso_bruto, tara, pue, formula, nuevo_art, modo_preconteo, fecha_mexico, num_opciones):
     st.markdown(f"### 📦 {articulo}")
+    
+    # Consultamos datos existentes para armar el total
     df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
     df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)", params={"art": articulo, "suc": sucursal}, ttl=0)
     df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
     
-    total_real = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
+    sum_anterior = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
+    total_real = truncar_dos_decimales(sum_anterior + resultado)
+    
     sumandos = [formato_estricto(val) for val in df_art_combined['resultado_pue']]
+    sumandos.append(formato_estricto(resultado))
     texto_total = f"{' + '.join(sumandos)} = {formato_estricto(total_real)}" if len(sumandos) > 1 else formato_estricto(total_real)
     
     st.metric("TOTAL CALCULADO (Sesión + Bóveda)", texto_total)
@@ -303,7 +311,7 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
     diferencia_valida = True
     col_st1, col_st2 = st.columns(2)
     with col_st1:
-        stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter", key=f"modal_stock_{id_registro}")
+        stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter", key=f"modal_stock_{articulo}")
         
     with col_st2:
         if stock_teorico is not None:
@@ -312,32 +320,60 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
             
             if diferencia > 0:
                 diferencia_valida = False
-                st.error("⚠️ Diferencia en rojo. El pesaje se ha omitido/eliminado automáticamente.")
-                with conn.session as s:
-                    s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
-                    s.commit()
-            else:
-                with conn.session as s:
-                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
-                                 VALUES (:suc, :art, :cat, :tr, :stk, :dif)
-                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                 SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
-                              {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
-                    s.commit()
+                st.error("⚠️ Diferencia en rojo. El pesaje será omitido (no se guardará).")
     
     st.divider()
     col1, col2 = st.columns(2)
+    
+    def avanzar_y_cerrar():
+        if not nuevo_art:
+            if st.session_state.auto_index < num_opciones - 1:
+                st.session_state.auto_index += 1
+            else:
+                st.session_state.pending_transition = True
+
     with col1:
-        if st.button("Continuar", type="primary", use_container_width=True): st.rerun() 
+        if st.button("Continuar", type="primary", use_container_width=True):
+            if diferencia_valida:
+                with conn.session as s:
+                    s.execute(text("""INSERT INTO pesajes_individuales 
+                                 (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                                 VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df)"""),
+                              {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
+                               "pb": peso_bruto if not modo_preconteo else 0.0, 
+                               "tara": tara if not modo_preconteo else 0.0, 
+                               "pue": pue if not modo_preconteo else 0.0, 
+                               "rp": resultado, "df": formula})
+                    if stock_teorico is not None:
+                        s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
+                                     VALUES (:suc, :art, :cat, :tr, :stk, :dif)
+                                     ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                     SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
+                                  {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                    s.commit()
+            avanzar_y_cerrar()
+            st.rerun() 
+            
     with col2:
         if diferencia_valida:
             if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
                 with conn.session as s:
-                    s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte)
-                                 SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, FALSE 
-                                 FROM pesajes_individuales WHERE id = :id"""), {"id": id_registro})
-                    s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_registro})
+                    s.execute(text("""INSERT INTO pesajes_guardados 
+                                 (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
+                                 VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df, FALSE)"""),
+                              {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
+                               "pb": peso_bruto if not modo_preconteo else 0.0, 
+                               "tara": tara if not modo_preconteo else 0.0, 
+                               "pue": pue if not modo_preconteo else 0.0, 
+                               "rp": resultado, "df": formula})
+                    if stock_teorico is not None:
+                        s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
+                                     VALUES (:suc, :art, :cat, :tr, :stk, :dif)
+                                     ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                     SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
+                                  {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
                     s.commit()
+                avanzar_y_cerrar()
                 st.session_state.show_toast = "✅ Trasladado a la Bóveda."
                 st.rerun()
 
@@ -433,7 +469,7 @@ tab_calc, tab_stock, tab_historial = st.tabs(["🧮 Pesaje", "📦 Stock Real", 
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA (AHORA PESAJE) ---
 with tab_calc:
-    orden_categorias = ["Papelería Venta", "Limpieza Venta", "Insumos Venta"]
+    orden_categorias = ORDEN_CATEGORIAS_OFICIAL
     orden_ubicaciones = ["Bodega", "Piso de Venta"]
     
     if "cat_idx" not in st.session_state: st.session_state.cat_idx = 0
@@ -488,7 +524,6 @@ with tab_calc:
         
         art_sel = st.selectbox("📦 Seleccione Artículo:", opciones, index=current_index if len(opciones) > 0 else None, placeholder="Elija un producto...")
         
-        # Recuperamos el PUE desde el dataframe filtrado
         df_match = df_cat_filtrado[df_cat_filtrado['articulo'] == art_sel]
         pue_final = float(df_match['pue'].values[0]) if art_sel and not df_match.empty else 1.0
     else:
@@ -573,20 +608,14 @@ with tab_calc:
                         st.rerun() 
                     
                     else:
-                        res = s.execute(text("""INSERT INTO pesajes_individuales 
-                                     (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
-                                     VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df) RETURNING id"""),
-                                  {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": categoria_actual, "pb": peso_bruto if not modo_preconteo else 0, 
-                                   "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
-                                   "rp": resultado, "df": formula})
-                        id_recien = res.fetchone()[0]
-                        s.commit()
-                        
-                        if not nuevo_art:
-                            avanzar_flujo()
-                            
-                        mostrar_popup_exito(id_recien, art_sel, resultado, sucursal_in, categoria_actual)
-            except Exception as e: st.error(f"Error al guardar: {e}")
+                        mostrar_popup_exito(
+                            art_sel, resultado, sucursal_in, categoria_actual, 
+                            peso_bruto if not modo_preconteo else 0.0, 
+                            tara_total if not modo_preconteo else 0.0, 
+                            pue_final if not modo_preconteo else 0.0, 
+                            formula, nuevo_art, modo_preconteo, fecha_mexico, len(opciones)
+                        )
+            except Exception as e: st.error(f"Error al procesar: {e}")
         else: st.error("❌ Error: Revisa los datos ingresados.")
 
     if art_sel:
@@ -622,7 +651,10 @@ with tab_calc:
 with tab_stock:
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     
-    categoria_activa_stock = st.selectbox("📂 Seleccione la Categoría de Inventario:", list(productos_por_categoria.keys()), key="cat_stock")
+    categorias_disponibles = list(productos_por_categoria.keys())
+    categorias_ordenadas = sorted(categorias_disponibles, key=lambda x: ORDEN_CATEGORIAS_OFICIAL.index(x) if x in ORDEN_CATEGORIAS_OFICIAL else 999)
+    
+    categoria_activa_stock = st.selectbox("📂 Seleccione la Categoría de Inventario:", categorias_ordenadas, key="cat_stock")
     productos_dict_stock = productos_por_categoria.get(categoria_activa_stock, {})
     
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
@@ -786,7 +818,10 @@ with tab_stock:
 
 # --- TAB 3: EXPORTACIÓN Y BÓVEDA (AHORA REPORTES) ---
 with tab_historial:
-    cat_filtro = st.selectbox("📂 Filtrar vistas por Categoría:", ["Todas"] + list(productos_por_categoria.keys()))
+    categorias_disponibles = list(productos_por_categoria.keys())
+    categorias_ordenadas = sorted(categorias_disponibles, key=lambda x: ORDEN_CATEGORIAS_OFICIAL.index(x) if x in ORDEN_CATEGORIAS_OFICIAL else 999)
+    
+    cat_filtro = st.selectbox("📂 Filtrar vistas por Categoría:", ["Todas"] + categorias_ordenadas)
     
     if cat_filtro == "Todas":
         df_actual = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
