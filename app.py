@@ -310,7 +310,7 @@ def mostrar_popup_exito(id_registro, articulo, resultado_ultimo, sucursal, categ
             diferencia = truncar_dos_decimales(total_real - stock_teorico)
             st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
             
-            if diferencia < 0:
+            if diferencia > 0:
                 diferencia_valida = False
                 st.error("⚠️ Diferencia en rojo. El pesaje se ha omitido/eliminado automáticamente.")
                 with conn.session as s:
