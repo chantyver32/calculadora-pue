@@ -338,6 +338,8 @@ def mostrar_popup_exito():
                 st.error("⚠️ Diferencia en rojo. El pesaje será omitido (no se guardará).")
     
     st.divider()
+    
+    # REORDENADO DE COLUMNAS PARA QUE SE APILEN EN EL ORDEN CORRECTO EN MÓVILES
     col1, col2, col3 = st.columns([1, 1, 1])
     
     def avanzar_y_cerrar():
@@ -350,12 +352,6 @@ def mostrar_popup_exito():
         del st.session_state.item_a_guardar
 
     with col1:
-        # BOTÓN NUEVO: Permite cancelar explícitamente sin avanzar el tour
-        if st.button("❌ Cancelar", type="secondary", use_container_width=True):
-            del st.session_state.item_a_guardar
-            st.rerun()
-
-    with col2:
         if st.button("Continuar", type="primary", use_container_width=True):
             if diferencia_valida:
                 with conn.session as s:
@@ -377,7 +373,7 @@ def mostrar_popup_exito():
             avanzar_y_cerrar()
             st.rerun() 
             
-    with col3:
+    with col2:
         if diferencia_valida:
             if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
                 with conn.session as s:
@@ -399,6 +395,11 @@ def mostrar_popup_exito():
                 avanzar_y_cerrar()
                 st.session_state.show_toast = "✅ Trasladado a la Bóveda."
                 st.rerun()
+
+    with col3:
+        if st.button("❌ Cancelar", type="secondary", use_container_width=True):
+            del st.session_state.item_a_guardar
+            st.rerun()
 
 @st.dialog("⏭️ Confirmar Avance")
 def dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal):
