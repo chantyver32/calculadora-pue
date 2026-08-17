@@ -595,7 +595,7 @@ with tab_calc:
                 if not nuevo_art:
                     avanzar_flujo()
                     
-                st.session_state.show_toast = f"⏭️ {art_sel} omitido."
+                st.session_state.show_toast = f"⏭️ {art_sel} omitido"
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al omitir: {e}")
