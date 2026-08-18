@@ -492,7 +492,7 @@ def generar_word_tarjetas(df):
     return buffer
 
 # ------------------ 4. INTERFAZ PRINCIPAL ------------------
-tab_calc, tab_stock, tab_historial = st.tabs(["🧮 Pesaje", "📦 Stock Real", "📋 Reportes"])
+tab_calc, tab_esquema, tab_stock, tab_historial = st.tabs(["🧮 Pesaje", "📊 Esquema Visual", "📦 Stock Real", "📋 Reportes"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA (PESAJE) ---
 with tab_calc:
@@ -711,6 +711,118 @@ with tab_calc:
                 st.markdown("**🔹 Bóveda (Guardados previamente)**")
                 df_g['detalle_formula'] = "[GUARDADO] " + df_g['detalle_formula'].astype(str)
                 st.dataframe(df_g[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
+
+# --- TAB 1.5: ESQUEMA VISUAL ---
+with tab_esquema:
+    st.subheader("🖼️ Reporte Visual de Stock Real")
+    
+    fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
+    
+    # 1. Contenedor principal estilo "tarjeta" y cabecera del reporte
+    html_content = f"""
+    <div style="background-color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">
+        <div style="text-align: center; font-family: 'Georgia', serif;">
+            <h1 style="color: #8b1c31; margin: 0; font-size: 32px; font-weight: bold;">Champlitte {sucursal_in}</h1>
+            <h4 style="color: #333; margin: 5px 0; letter-spacing: 3px; font-family: sans-serif; font-size: 12px; font-weight: bold;">PASTELERÍA</h4>
+            <h2 style="color: #8b1c31; margin: 15px 0; font-size: 22px; font-family: sans-serif; font-weight: bold;">RESUMEN (TOTALES)</h2>
+            <p style="color: #555; font-size: 12px; font-family: sans-serif; margin-bottom: 25px;">{fecha_str}</p>
+        </div>
+    """
+    
+    # 2. Iterar sobre las categorías para procesar cálculos y armar las tablas
+    for categoria in ORDEN_CATEGORIAS_OFICIAL:
+        query_unificada = """
+            SELECT articulo, resultado_pue 
+            FROM (
+                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                UNION ALL
+                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+            ) as combinados
+        """
+        df_raw = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria}, ttl=0)
+        
+        pesajes_data = []
+        if not df_raw.empty:
+            for art, group in df_raw.groupby('articulo'):
+                total = truncar_dos_decimales(sum(group['resultado_pue'].tolist()))
+                pesajes_data.append({"articulo": art, "total_pesado": total})
+                
+        df_total_pesado = pd.DataFrame(pesajes_data) if pesajes_data else pd.DataFrame(columns=["articulo", "total_pesado"])
+        df_auditoria_base = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria}, ttl=0)
+        
+        productos_dict_stock = productos_por_categoria.get(categoria, {})
+        lista_todos_articulos = sorted(list(set(
+            list(productos_dict_stock.keys()) + 
+            (df_auditoria_base['articulo'].tolist() if not df_auditoria_base.empty else []) + 
+            (df_total_pesado['articulo'].tolist() if not df_total_pesado.empty else [])
+        )))
+        
+        df_stock_master = pd.DataFrame({"articulo": lista_todos_articulos})
+        
+        if not df_auditoria_base.empty:
+            df_stock_master = pd.merge(df_stock_master, df_auditoria_base, on="articulo", how="left")
+        else:
+            df_stock_master["stock"] = 0.0
+
+        if not df_total_pesado.empty:
+            df_stock_master = pd.merge(df_stock_master, df_total_pesado, on="articulo", how="left")
+        else:
+            df_stock_master["total_pesado"] = 0.0
+
+        df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
+        df_stock_master["total_pesado"] = df_stock_master["total_pesado"].fillna(0.0)
+        df_stock_master["cantidad_a_restar"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
+        
+        # 3. Dibujar tabla HTML para cada categoría si tiene productos
+        if not df_stock_master.empty:
+            html_content += f"""
+            <div style="margin-bottom: 30px;">
+                <h3 style="color: #8b1c31; font-family: sans-serif; font-size: 16px; margin-bottom: 10px; border-bottom: 2px solid #8b1c31; padding-bottom: 5px;">{categoria.upper()}</h3>
+                <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px;">
+                    <thead>
+                        <tr style="background-color: #8b1c31; color: white; text-align: center; font-size: 11px;">
+                            <th style="padding: 10px 8px; text-align: left; width: 40%;">PRODUCTO</th>
+                            <th style="padding: 10px 8px;">CANT. ANTERIOR</th>
+                            <th style="padding: 10px 8px;">STOCK ACTUALIZADO</th>
+                            <th style="padding: 10px 8px;">A RESTAR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            
+            for idx, row in df_stock_master.iterrows():
+                bg_color = "#fcf0f2" if idx % 2 != 0 else "#ffffff"
+                
+                html_content += f"""
+                    <tr style="background-color: {bg_color}; border-bottom: 1px solid #f0f0f0;">
+                        <td style="padding: 12px 8px; color: #333; text-align: left;">{row['articulo']}</td>
+                        <td style="padding: 12px 8px; text-align: center; color: #333;">{formato_estricto(row['stock'])}</td>
+                        <td style="padding: 12px 8px; text-align: center; color: #8b1c31; font-weight: bold;">{formato_estricto(row['total_pesado'])}</td>
+                        <td style="padding: 12px 8px; text-align: center; color: #333;">{formato_estricto(row['cantidad_a_restar'])}</td>
+                    </tr>
+                """
+                
+            html_content += """
+                    </tbody>
+                </table>
+            </div>
+            """
+        
+    html_content += "</div>"
+    
+    # 4. Inyección del reporte en la vista
+    st.markdown(html_content, unsafe_allow_html=True)
+    
+    # 5. Botón de Enviar a WhatsApp en la parte inferior imitando el de la captura
+    st.markdown(f'''
+        <a href="https://wa.me/{numero_wa}" target="_blank" 
+           style="display: block; width: 100%; background-color: #39e36f; color: white; text-align: center; 
+                  padding: 16px; border-radius: 8px; font-weight: bold; font-family: sans-serif; 
+                  text-decoration: none; font-size: 18px; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <svg style="width: 20px; height: 20px; vertical-align: text-bottom; margin-right: 5px;" fill="white" viewBox="0 0 24 24"><path d="M12.031 21.365h-.024c-1.636-.002-3.237-.42-4.646-1.21l-.333-.186-3.456.906.921-3.37-.204-.326c-.868-1.385-1.326-2.983-1.326-4.636 0-4.8 3.906-8.708 8.709-8.708 2.327 0 4.51.906 6.155 2.553 1.644 1.645 2.551 3.827 2.551 6.153 0 4.802-3.905 8.708-8.708 8.708zm-7.23-2.613l2.062-.54.195.116c1.238.736 2.657 1.124 4.11 1.124h.015c4.015.002 7.284-3.268 7.284-7.287 0-1.946-.757-3.774-2.133-5.148-1.374-1.376-3.203-2.134-5.15-2.134-4.018 0-7.288 3.27-7.288 7.288 0 1.5.405 2.96 1.176 4.24l.128.21-1.2 4.394zm10.745-6.31c-.247-.123-1.46-.72-1.687-.803-.227-.083-.393-.123-.558.124-.166.246-.638.803-.782.968-.144.165-.29.186-.537.062-2.148-1.074-3.411-2.42-4.708-4.654-.145-.247.016-.38.14-.503.111-.11.247-.29.37-.434.123-.145.166-.247.247-.412.083-.166.04-.31-.02-.435-.062-.124-.558-1.345-.765-1.84-.2-.483-.404-.418-.558-.426-.144-.007-.31-.007-.476-.007s-.433.062-.66.31c-.227.246-.867.846-.867 2.06 0 1.213.888 2.387 1.012 2.552.124.165 1.74 2.656 4.215 3.725 1.956.845 2.316.732 2.727.608.41-.124 1.46-.597 1.666-1.174.207-.577.207-1.074.145-1.174-.062-.102-.228-.166-.475-.29z"/></svg>
+            Enviar Reporte a {sucursal_in.upper()}
+        </a>
+    ''', unsafe_allow_html=True)
 
 
 # --- TAB 2: STOCK REAL POR CATEGORÍAS (AHORA STOCK REAL REPLICADO PARA CADA UNA) ---
