@@ -761,8 +761,15 @@ with tab_visual:
         filas_categoria = ""
         for art in lista_todos:
             stock_actual = float(df_auditoria[df_auditoria['articulo'] == art]['stock'].iloc[0]) if not df_auditoria.empty and art in df_auditoria['articulo'].values else 0.0
-            cant_pesada = float(df_pesajes[df_pesajes['articulo'] == art]['total_pesado'].iloc[0]) if not df_pesajes.empty and art in df_pesajes['articulo'].values else 0.0
             
+            tiene_pesaje = not df_pesajes.empty and art in df_pesajes['articulo'].values
+            
+            if tiene_pesaje:
+                cant_pesada = float(df_pesajes[df_pesajes['articulo'] == art]['total_pesado'].iloc[0])
+            else:
+                # Si no hay pesajes, se asume que el stock sigue siendo el inicial (no cae a 0)
+                cant_pesada = stock_actual 
+                
             cant_a_restar = truncar_dos_decimales(stock_actual - cant_pesada)
             
             # FILTRO: Omitir si no hay diferencia real en el stock
@@ -812,6 +819,43 @@ No hay diferencias registradas en el stock para esta sucursal.
     st.write(html_content, unsafe_allow_html=True)
     st.divider()
 
+    # --- BOTÓN MAESTRO DE ACTUALIZACIÓN ---
+    if st.button("🔄 ACTUALIZAR STOCK PARA MAÑANA (TODAS LAS CATEGORÍAS)", type="primary", use_container_width=True):
+        with conn.session as s:
+            for cat_upd in ORDEN_CATEGORIAS_OFICIAL:
+                # 1. Recuperar el stock pesado para hacer el salto a la cantidad anterior
+                query_pesajes_maestro = text("""
+                    SELECT articulo, SUM(resultado_pue) as total_pesado 
+                    FROM (
+                        SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                        UNION ALL
+                        SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+                    ) as combinados
+                    GROUP BY articulo
+                """)
+                df_pesajes_cat = conn.query(query_pesajes_maestro, params={"suc": sucursal_in, "cat": cat_upd}, ttl=0)
+                
+                # 2. Actualizar el stock
+                if not df_pesajes_cat.empty:
+                    for _, row_p in df_pesajes_cat.iterrows():
+                        art_m = row_p["articulo"]
+                        nueva_base_m = row_p["total_pesado"]
+                        if nueva_base_m > 0:
+                            s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
+                                         VALUES (:suc, :art, :cat, :stk, 0, 0)
+                                         ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                         SET stock = EXCLUDED.stock"""), 
+                                      {"suc": sucursal_in, "art": art_m, "cat": cat_upd, "stk": nueva_base_m})
+                
+                # 3. Limpiar sesión (eliminar pesajes actuales, dejar bóveda marcada como aplicada)
+                s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
+                s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
+            
+            s.commit()
+            
+        st.session_state.show_toast = "✅ ¡Inventario convertido para mañana en TODAS las categorías!"
+        st.rerun()
+
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
 
@@ -856,13 +900,18 @@ No hay diferencias registradas en el stock para esta sucursal.
 
         if not df_total_pesado.empty:
             df_stock_master = pd.merge(df_stock_master, df_total_pesado, on="articulo", how="left")
-            df_stock_master["total_pesado"] = df_stock_master["total_pesado"].fillna(0.0)
-            df_stock_master["desglose_pesada"] = df_stock_master["desglose_pesada"].fillna("0.00")
         else:
-            df_stock_master["total_pesado"] = 0.0
+            # Usar float('nan') para que fillna identifique dónde no hubo pesajes
+            df_stock_master["total_pesado"] = float('nan') 
             df_stock_master["desglose_pesada"] = "0.00"
 
+        # Llenar stock vacío con 0.0
         df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
+        
+        # FIX: Si un producto NO tiene pesaje activo, asumimos que su stock actual es igual a su cantidad anterior
+        df_stock_master["total_pesado"] = df_stock_master["total_pesado"].fillna(df_stock_master["stock"])
+        df_stock_master["desglose_pesada"] = df_stock_master["desglose_pesada"].fillna("0.00")
+
         df_stock_master["cantidad_a_restar"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
 
         df_stock_display = df_stock_master[[
@@ -897,25 +946,6 @@ No hay diferencias registradas en el stock para esta sucursal.
                                   {"suc": sucursal_in, "art": art, "cat": categoria_activa_stock, "stk": nuevo_stock})
                     s.commit()
                 st.session_state.show_toast = f"✅ Stock inicial de {categoria_activa_stock} actualizado correctamente."
-                st.rerun()
-
-            if st.button(f"🔄 CONVERTIR STOCK DE {categoria_activa_stock.upper()} PARA MAÑANA", type="primary", use_container_width=True, key=f"btn_conv_{categoria_activa_stock}"):
-                with conn.session as s:
-                    articulos_con_pesaje = df_stock_master[df_stock_master["total_pesado"] > 0]
-                    for _, row in articulos_con_pesaje.iterrows():
-                        art = row["articulo"]
-                        nueva_base = row["total_pesado"]
-                        s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
-                                     VALUES (:suc, :art, :cat, :stk, 0, 0)
-                                     ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                     SET stock = EXCLUDED.stock"""), 
-                                  {"suc": sucursal_in, "art": art, "cat": categoria_activa_stock, "stk": nueva_base})
-                    
-                    s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa_stock})
-                    s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria_activa_stock})
-                    s.commit()
-                    
-                st.session_state.show_toast = f"✅ ¡Inventario convertido para mañana ({categoria_activa_stock})!"
                 st.rerun()
 
         with st.expander(f"📝 Administrar Catálogo: {categoria_activa_stock}", expanded=False):
