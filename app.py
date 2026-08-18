@@ -486,7 +486,7 @@ def generar_word_tarjetas(df):
     return buffer
 
 # ------------------ 4. INTERFAZ PRINCIPAL ------------------
-tab_calc, tab_stock, tab_historial, tab_reportes = st.tabs(["🧮 Pesaje", "📦 Stock Real", "📋 Reportes", "🖼️ Reportes Visuales"])
+tab_calc, tab_stock, tab_historial = st.tabs(["🧮 Pesaje", "📦 Stock Real", "📋 Reportes"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA (PESAJE) ---
 with tab_calc:
@@ -884,10 +884,113 @@ with tab_historial:
     df_combined = pd.concat([df_actual, df_guardados_rep], ignore_index=True)
 
     if not df_combined.empty:
-        st.subheader("📄 Tarjetas Recortables (Word)")
+        st.subheader("📄 Tarjetas y Reportes (Word y PDF)")
+        
+        # --- GENERACIÓN DE WORD ---
         if not df_guardados.empty:
             st.download_button("📄 Descargar Tarjetas en Word (Pre-conteos)", data=generar_word_tarjetas(df_guardados[['articulo', 'resultado_pue']].copy()), file_name=f"Tarjetas_Preconteos_{sucursal_in.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-        else: st.info("No hay pre-conteos guardados en la bóveda para generar tarjetas.")
+        else: 
+            st.info("No hay pre-conteos guardados en la bóveda para generar tarjetas Word.")
+            
+        # --- GENERACIÓN DE PDF JUSTO DEBAJO DEL WORD ---
+        fecha_reporte = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
+        datos_pdf = []
+        hay_datos_globales = False
+
+        for categoria_pdf in ORDEN_CATEGORIAS_OFICIAL:
+            query_pdf = """
+                SELECT articulo, resultado_pue 
+                FROM (
+                    SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                    UNION ALL
+                    SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+                ) as combinados
+            """
+            df_raw_pdf = conn.query(query_pdf, params={"suc": sucursal_in, "cat": categoria_pdf}, ttl=0)
+            
+            if not df_raw_pdf.empty:
+                pesajes_data_pdf = []
+                for art, group in df_raw_pdf.groupby('articulo'):
+                    total = truncar_dos_decimales(sum(group['resultado_pue'].tolist()))
+                    if total > 0:  
+                        pesajes_data_pdf.append({"articulo": art, "total_pesado": total})
+                        
+                if pesajes_data_pdf:
+                    hay_datos_globales = True
+                    df_pesados_pdf = pd.DataFrame(pesajes_data_pdf)
+                    df_auditoria_pdf = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria_pdf}, ttl=0)
+                    
+                    df_final_pdf = pd.merge(df_pesados_pdf, df_auditoria_pdf, on="articulo", how="left").fillna(0.0)
+                    df_final_pdf["cantidad_a_restar"] = df_final_pdf["stock"] - df_final_pdf["total_pesado"]
+                    
+                    datos_pdf.append({"categoria": categoria_pdf, "df": df_final_pdf})
+
+        if hay_datos_globales:
+            def generar_pdf_reporte():
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Helvetica", style="B", size=20)
+                pdf.set_text_color(139, 26, 32)
+                pdf.cell(0, 10, f"Champlitte {sucursal_in}", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", size=10)
+                pdf.set_text_color(85, 85, 85)
+                pdf.cell(0, 5, "PASTELERÍA - REPORTE DE INSUMOS", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 5, fecha_reporte, align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(5)
+                
+                for seccion in datos_pdf:
+                    cat_nombre = seccion["categoria"]
+                    df_sec = seccion["df"]
+                    
+                    pdf.set_font("Helvetica", style="B", size=12)
+                    pdf.set_text_color(139, 26, 32)
+                    pdf.cell(0, 10, f"RESUMEN ({cat_nombre.upper()})", align="C", new_x="LMARGIN", new_y="NEXT")
+                    
+                    pdf.set_fill_color(139, 26, 32)
+                    pdf.set_text_color(255, 255, 255)
+                    pdf.set_font("Helvetica", style="B", size=8)
+                    
+                    pdf.cell(64, 8, "PRODUCTO", border=1, fill=True)
+                    pdf.cell(28, 8, "CANT. ANTES", border=1, align="C", fill=True)
+                    pdf.cell(28, 8, "CANT. PESADA", border=1, align="C", fill=True)
+                    pdf.cell(32, 8, "CANT. A RESTAR", border=1, align="C", fill=True)
+                    pdf.cell(38, 8, "STOCK ACTUALIZADO", border=1, align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
+                    
+                    pdf.set_text_color(0, 0, 0)
+                    pdf.set_font("Helvetica", size=8)
+                    fill = False
+                    for idx, row in df_sec.iterrows():
+                        if fill:
+                            pdf.set_fill_color(253, 243, 244)
+                        else:
+                            pdf.set_fill_color(255, 255, 255)
+                            
+                        prod_str = str(row['articulo'])[:35]
+                        pdf.cell(64, 8, prod_str, border=1, fill=fill)
+                        pdf.cell(28, 8, formato_estricto(row['stock']), border=1, align="C", fill=fill)
+                        
+                        pdf.set_text_color(139, 26, 32)
+                        pdf.cell(28, 8, formato_estricto(row['total_pesado']), border=1, align="C", fill=fill)
+                        pdf.set_text_color(0, 0, 0)
+                        
+                        pdf.cell(32, 8, formato_estricto(row['cantidad_a_restar']), border=1, align="C", fill=fill)
+                        pdf.cell(38, 8, formato_estricto(row['total_pesado']), border=1, align="C", fill=fill, new_x="LMARGIN", new_y="NEXT")
+                        
+                        fill = not fill
+                    pdf.ln(8)
+                    
+                return bytes(pdf.output())
+
+            st.download_button(
+                label="📄 Descargar Reporte Completo en PDF",
+                data=generar_pdf_reporte(),
+                file_name=f"Reporte_Insumos_{sucursal_in.replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary"
+            )
+        else:
+            st.info("No hay pesajes registrados para armar el PDF de Reporte.")
             
         st.markdown(f'<a href="https://wa.me/{numero_wa}" target="_blank" class="btn-wa">💬 ABRIR WHATSAPP (Para enviar archivos)</a>', unsafe_allow_html=True)
         st.divider()
@@ -934,155 +1037,9 @@ with tab_historial:
                         st.session_state.show_toast = f"✅ Se eliminaron {len(ids_to_delete_g)} registros guardados."
                         st.rerun()
             else: st.info("No hay pre-conteos guardados en la bóveda.")
-    else: st.info(f"No hay pesajes registrados para {sucursal_in} en esta categoría.")
-
-# --- TAB 4: REPORTES VISUALES Y ACTUALIZACIÓN GLOBAL ---
-with tab_reportes:
-    st.markdown("### 📊 Reportes Visuales (Bajas Confirmadas)")
-    st.markdown("Aquí se visualizan únicamente los insumos que fueron pesados y tienen una diferencia para dar de baja.")
-    
-    fecha_reporte = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
-    
-    datos_pdf = []
-    hay_datos_globales = False
-
-    for categoria in ORDEN_CATEGORIAS_OFICIAL:
-        query_unificada = """
-            SELECT articulo, resultado_pue 
-            FROM (
-                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
-                UNION ALL
-                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
-            ) as combinados
-        """
-        df_raw = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria}, ttl=0)
-        
-        if df_raw.empty:
-            continue
             
-        pesajes_data = []
-        for art, group in df_raw.groupby('articulo'):
-            total = truncar_dos_decimales(sum(group['resultado_pue'].tolist()))
-            if total > 0:  
-                pesajes_data.append({"articulo": art, "total_pesado": total})
-                
-        if not pesajes_data:
-            continue
-            
-        hay_datos_globales = True
-        df_pesados = pd.DataFrame(pesajes_data)
-        
-        df_auditoria = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria}, ttl=0)
-        
-        df_final = pd.merge(df_pesados, df_auditoria, on="articulo", how="left").fillna(0.0)
-        df_final["baja_real"] = df_final["stock"] - df_final["total_pesado"]
-        
-        datos_pdf.append({"categoria": categoria, "df": df_final})
-        
-        html_tabla = f"""
-        <div style="background-color: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 20px; font-family: sans-serif; color: #333;">
-            <h1 style="color: #8B1A20; text-align: center; margin-bottom: 0; font-size: 28px;">Champlitte {sucursal_in}</h1>
-            <h5 style="text-align: center; margin-top: 5px; color: #555; letter-spacing: 2px;">PASTELERÍA</h5>
-            <h3 style="color: #8B1A20; text-align: center; font-size: 22px;">RESUMEN ({categoria.upper()})</h3>
-            <p style="text-align: center; font-size: 12px; color: #666;">{fecha_reporte}</p>
-            
-            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-                <thead>
-                    <tr style="background-color: #8B1A20; color: white; font-size: 14px;">
-                        <th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
-                        <th style="padding: 12px; text-align: center;">STOCK ANT.</th>
-                        <th style="padding: 12px; text-align: center; border-top-right-radius: 8px;">CANTIDAD PESADA</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-        
-        for idx, row in df_final.iterrows():
-            bg_color = "#FFFFFF" if idx % 2 == 0 else "#FDF3F4"
-            html_tabla += f"""
-                <tr style="background-color: {bg_color}; font-size: 14px; border-bottom: 1px solid #eee;">
-                    <td style="padding: 12px; color: #333;">{row['articulo']}</td>
-                    <td style="padding: 12px; text-align: center; color: #666;">{formato_estricto(row['stock'])}</td>
-                    <td style="padding: 12px; text-align: center; color: #8B1A20; font-weight: bold;">{formato_estricto(row['total_pesado'])}</td>
-                </tr>
-            """
-            
-        html_tabla += """
-                </tbody>
-            </table>
-        </div>
-        """
-        
-        with st.expander(f"👁️ Ver Reporte Detallado - {categoria}", expanded=False):
-            st.markdown(html_tabla, unsafe_allow_html=True)
-            
-    if not hay_datos_globales:
-        st.info("No hay pesajes registrados para mostrar en los reportes.")
-    else:
         st.divider()
-        col_pdf, col_update = st.columns(2)
-        
-        with col_pdf:
-            def generar_pdf_reporte():
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Helvetica", style="B", size=20)
-                
-                pdf.set_text_color(139, 26, 32)
-                pdf.cell(0, 10, f"Champlitte {sucursal_in}", align="C", new_x="LMARGIN", new_y="NEXT")
-                pdf.set_font("Helvetica", size=10)
-                pdf.set_text_color(85, 85, 85)
-                pdf.cell(0, 5, "PASTELERÍA - REPORTE DE INSUMOS", align="C", new_x="LMARGIN", new_y="NEXT")
-                pdf.cell(0, 5, fecha_reporte, align="C", new_x="LMARGIN", new_y="NEXT")
-                pdf.ln(5)
-                
-                for seccion in datos_pdf:
-                    cat_nombre = seccion["categoria"]
-                    df_sec = seccion["df"]
-                    
-                    pdf.set_font("Helvetica", style="B", size=14)
-                    pdf.set_text_color(139, 26, 32)
-                    pdf.cell(0, 10, f"RESUMEN ({cat_nombre.upper()})", align="C", new_x="LMARGIN", new_y="NEXT")
-                    
-                    pdf.set_fill_color(139, 26, 32)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.set_font("Helvetica", style="B", size=10)
-                    pdf.cell(100, 8, "PRODUCTO", border=1, fill=True)
-                    pdf.cell(45, 8, "STOCK ANT.", border=1, align="C", fill=True)
-                    pdf.cell(45, 8, "CANT. PESADA", border=1, align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
-                    
-                    pdf.set_text_color(0, 0, 0)
-                    pdf.set_font("Helvetica", size=9)
-                    fill = False
-                    for idx, row in df_sec.iterrows():
-                        if fill:
-                            pdf.set_fill_color(253, 243, 244)
-                        else:
-                            pdf.set_fill_color(255, 255, 255)
-                            
-                        pdf.cell(100, 8, str(row['articulo'])[:50], border=1, fill=fill)
-                        pdf.cell(45, 8, formato_estricto(row['stock']), border=1, align="C", fill=fill)
-                        
-                        pdf.set_text_color(139, 26, 32)
-                        pdf.cell(45, 8, formato_estricto(row['total_pesado']), border=1, align="C", fill=fill, new_x="LMARGIN", new_y="NEXT")
-                        pdf.set_text_color(0, 0, 0)
-                        
-                        fill = not fill
-                    pdf.ln(10)
-                    
-                return bytes(pdf.output())
-
-            pdf_bytes = generar_pdf_reporte()
-            st.download_button(
-                label="📄 Descargar Reporte en PDF",
-                data=pdf_bytes,
-                file_name=f"Reporte_Insumos_{sucursal_in.replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary"
-            )
-
-        with col_update:
+        with st.expander("🔄 ZONA DE CIERRE (Aplicar Stock)", expanded=False):
             if st.button("🔄 ACTUALIZAR STOCK INICIAL (LAS 3 CATEGORÍAS)", type="primary", use_container_width=True):
                 with conn.session as s:
                     for categoria in ORDEN_CATEGORIAS_OFICIAL:
@@ -1113,6 +1070,8 @@ with tab_reportes:
                     
                 st.session_state.show_toast = "✅ ¡Stock de todas las categorías actualizado para mañana!"
                 st.rerun()
+    else: st.info(f"No hay pesajes registrados para {sucursal_in} en esta categoría.")
+
 
 components.html("""
     <script>
@@ -1124,4 +1083,3 @@ components.html("""
     }, 600); 
     </script>
 """, height=0)
-
