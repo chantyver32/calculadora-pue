@@ -6,8 +6,6 @@ import pytz
 import math
 import urllib.parse
 import io
-import base64
-from fpdf import FPDF
 from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -501,6 +499,7 @@ with tab_calc:
     if st.session_state.pending_transition:
         dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal_in)
 
+    # --- MODO MOVIDO AFUERA DEL EXPANDER ---
     modo_seleccionado = st.selectbox("⚙️ Seleccione el Modo:", ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"], index=0)
 
     with st.expander("⚙️ Ajustes", expanded=False):
@@ -752,16 +751,16 @@ with tab_stock:
             df_stock_master["desglose_pesada"] = "0.00"
 
         df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
-        df_stock_master["cantidad_a_restar"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
+        df_stock_master["cantidad_actual"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
 
         df_stock_display = df_stock_master[[
-            "stock", "articulo", "desglose_pesada", "cantidad_a_restar", "total_pesado"
+            "stock", "articulo", "desglose_pesada", "total_pesado", "cantidad_actual"
         ]].rename(columns={
             "stock": "Cantidad Anterior",
             "articulo": "Producto",
             "desglose_pesada": "Cantidad Pesada",
-            "cantidad_a_restar": "Cantidad a Restar",
-            "total_pesado": "Stock Actualizado"
+            "total_pesado": "Cantidad a Restar",
+            "cantidad_actual": "Stock Actualizado"
         })
 
         with st.expander(f"📦 Tabla de Stock Real - {categoria_activa_stock}", expanded=False):
@@ -792,7 +791,7 @@ with tab_stock:
                     articulos_con_pesaje = df_stock_master[df_stock_master["total_pesado"] > 0]
                     for _, row in articulos_con_pesaje.iterrows():
                         art = row["articulo"]
-                        nueva_base = row["total_pesado"]
+                        nueva_base = row["cantidad_actual"]
                         s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
                                      VALUES (:suc, :art, :cat, :stk, 0, 0)
                                      ON CONFLICT (sucursal, articulo) DO UPDATE 
@@ -884,113 +883,10 @@ with tab_historial:
     df_combined = pd.concat([df_actual, df_guardados_rep], ignore_index=True)
 
     if not df_combined.empty:
-        st.subheader("📄 Tarjetas y Reportes (Word y PDF)")
-        
-        # --- GENERACIÓN DE WORD ---
+        st.subheader("📄 Tarjetas Recortables (Word)")
         if not df_guardados.empty:
             st.download_button("📄 Descargar Tarjetas en Word (Pre-conteos)", data=generar_word_tarjetas(df_guardados[['articulo', 'resultado_pue']].copy()), file_name=f"Tarjetas_Preconteos_{sucursal_in.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-        else: 
-            st.info("No hay pre-conteos guardados en la bóveda para generar tarjetas Word.")
-            
-        # --- GENERACIÓN DE PDF JUSTO DEBAJO DEL WORD ---
-        fecha_reporte = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
-        datos_pdf = []
-        hay_datos_globales = False
-
-        for categoria_pdf in ORDEN_CATEGORIAS_OFICIAL:
-            query_pdf = """
-                SELECT articulo, resultado_pue 
-                FROM (
-                    SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
-                    UNION ALL
-                    SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
-                ) as combinados
-            """
-            df_raw_pdf = conn.query(query_pdf, params={"suc": sucursal_in, "cat": categoria_pdf}, ttl=0)
-            
-            if not df_raw_pdf.empty:
-                pesajes_data_pdf = []
-                for art, group in df_raw_pdf.groupby('articulo'):
-                    total = truncar_dos_decimales(sum(group['resultado_pue'].tolist()))
-                    if total > 0:  
-                        pesajes_data_pdf.append({"articulo": art, "total_pesado": total})
-                        
-                if pesajes_data_pdf:
-                    hay_datos_globales = True
-                    df_pesados_pdf = pd.DataFrame(pesajes_data_pdf)
-                    df_auditoria_pdf = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria_pdf}, ttl=0)
-                    
-                    df_final_pdf = pd.merge(df_pesados_pdf, df_auditoria_pdf, on="articulo", how="left").fillna(0.0)
-                    df_final_pdf["cantidad_a_restar"] = df_final_pdf["stock"] - df_final_pdf["total_pesado"]
-                    
-                    datos_pdf.append({"categoria": categoria_pdf, "df": df_final_pdf})
-
-        if hay_datos_globales:
-            def generar_pdf_reporte():
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Helvetica", style="B", size=20)
-                pdf.set_text_color(139, 26, 32)
-                pdf.cell(0, 10, f"Champlitte {sucursal_in}", align="C", new_x="LMARGIN", new_y="NEXT")
-                pdf.set_font("Helvetica", size=10)
-                pdf.set_text_color(85, 85, 85)
-                pdf.cell(0, 5, "PASTELERÍA - REPORTE DE INSUMOS", align="C", new_x="LMARGIN", new_y="NEXT")
-                pdf.cell(0, 5, fecha_reporte, align="C", new_x="LMARGIN", new_y="NEXT")
-                pdf.ln(5)
-                
-                for seccion in datos_pdf:
-                    cat_nombre = seccion["categoria"]
-                    df_sec = seccion["df"]
-                    
-                    pdf.set_font("Helvetica", style="B", size=12)
-                    pdf.set_text_color(139, 26, 32)
-                    pdf.cell(0, 10, f"RESUMEN ({cat_nombre.upper()})", align="C", new_x="LMARGIN", new_y="NEXT")
-                    
-                    pdf.set_fill_color(139, 26, 32)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.set_font("Helvetica", style="B", size=8)
-                    
-                    pdf.cell(64, 8, "PRODUCTO", border=1, fill=True)
-                    pdf.cell(28, 8, "CANT. ANTES", border=1, align="C", fill=True)
-                    pdf.cell(28, 8, "CANT. PESADA", border=1, align="C", fill=True)
-                    pdf.cell(32, 8, "CANT. A RESTAR", border=1, align="C", fill=True)
-                    pdf.cell(38, 8, "STOCK ACTUALIZADO", border=1, align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
-                    
-                    pdf.set_text_color(0, 0, 0)
-                    pdf.set_font("Helvetica", size=8)
-                    fill = False
-                    for idx, row in df_sec.iterrows():
-                        if fill:
-                            pdf.set_fill_color(253, 243, 244)
-                        else:
-                            pdf.set_fill_color(255, 255, 255)
-                            
-                        prod_str = str(row['articulo'])[:35]
-                        pdf.cell(64, 8, prod_str, border=1, fill=fill)
-                        pdf.cell(28, 8, formato_estricto(row['stock']), border=1, align="C", fill=fill)
-                        
-                        pdf.set_text_color(139, 26, 32)
-                        pdf.cell(28, 8, formato_estricto(row['total_pesado']), border=1, align="C", fill=fill)
-                        pdf.set_text_color(0, 0, 0)
-                        
-                        pdf.cell(32, 8, formato_estricto(row['cantidad_a_restar']), border=1, align="C", fill=fill)
-                        pdf.cell(38, 8, formato_estricto(row['total_pesado']), border=1, align="C", fill=fill, new_x="LMARGIN", new_y="NEXT")
-                        
-                        fill = not fill
-                    pdf.ln(8)
-                    
-                return bytes(pdf.output())
-
-            st.download_button(
-                label="📄 Descargar Reporte Completo en PDF",
-                data=generar_pdf_reporte(),
-                file_name=f"Reporte_Insumos_{sucursal_in.replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary"
-            )
-        else:
-            st.info("No hay pesajes registrados para armar el PDF de Reporte.")
+        else: st.info("No hay pre-conteos guardados en la bóveda para generar tarjetas.")
             
         st.markdown(f'<a href="https://wa.me/{numero_wa}" target="_blank" class="btn-wa">💬 ABRIR WHATSAPP (Para enviar archivos)</a>', unsafe_allow_html=True)
         st.divider()
@@ -1037,41 +933,7 @@ with tab_historial:
                         st.session_state.show_toast = f"✅ Se eliminaron {len(ids_to_delete_g)} registros guardados."
                         st.rerun()
             else: st.info("No hay pre-conteos guardados en la bóveda.")
-            
-        st.divider()
-        with st.expander("🔄 ZONA DE CIERRE (Aplicar Stock)", expanded=False):
-            if st.button("🔄 ACTUALIZAR STOCK INICIAL (LAS 3 CATEGORÍAS)", type="primary", use_container_width=True):
-                with conn.session as s:
-                    for categoria in ORDEN_CATEGORIAS_OFICIAL:
-                        query_unificada = """
-                            SELECT articulo, resultado_pue 
-                            FROM (
-                                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
-                                UNION ALL
-                                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
-                            ) as combinados
-                        """
-                        df_act = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria}, ttl=0)
-                        
-                        if not df_act.empty:
-                            for art, group in df_act.groupby('articulo'):
-                                total_pesado = truncar_dos_decimales(sum(group['resultado_pue'].tolist()))
-                                if total_pesado > 0:
-                                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia) 
-                                                 VALUES (:suc, :art, :cat, :stk, 0, 0)
-                                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                                 SET stock = EXCLUDED.stock"""), 
-                                              {"suc": sucursal_in, "art": art, "cat": categoria, "stk": total_pesado})
-                            
-                            s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria})
-                            s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": categoria})
-                    
-                    s.commit()
-                    
-                st.session_state.show_toast = "✅ ¡Stock de todas las categorías actualizado para mañana!"
-                st.rerun()
     else: st.info(f"No hay pesajes registrados para {sucursal_in} en esta categoría.")
-
 
 components.html("""
     <script>
