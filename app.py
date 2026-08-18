@@ -492,7 +492,8 @@ def generar_word_tarjetas(df):
     return buffer
 
 # ------------------ 4. INTERFAZ PRINCIPAL ------------------
-tab_calc, tab_stock, tab_historial, tab_visual = st.tabs(["🧮 Pesaje", "📦 Stock Real", "📋 Reportes", "🖼️ Esquema Visual"])
+# HEMOS MOVIDO EL ESQUEMA VISUAL A LA PESTAÑA 2, Y REDUCIDO LAS PESTAÑAS A 3.
+tab_calc, tab_visual, tab_historial = st.tabs(["🧮 Pesaje", "🖼️ Esquema Visual", "📋 Reportes"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA (PESAJE) ---
 with tab_calc:
@@ -507,7 +508,6 @@ with tab_calc:
     if st.session_state.pending_transition:
         dialog_confirmar_transicion(orden_categorias, orden_ubicaciones, sucursal_in)
 
-    # --- MODO MOVIDO AFUERA DEL EXPANDER ---
     modo_seleccionado = st.selectbox("⚙️ Seleccione el Modo:", ["Modo Normal", "Artículo NO listado", "PRE-CONTEO MANUAL (Piezas directas)"], index=0)
 
     with st.expander("⚙️ Ajustes", expanded=False):
@@ -713,8 +713,92 @@ with tab_calc:
                 st.dataframe(df_g[['detalle_formula', 'resultado_pue']].rename(columns={'detalle_formula': 'Operación', 'resultado_pue': 'Cantidad'}), hide_index=True, use_container_width=True)
 
 
-# --- TAB 2: STOCK REAL POR CATEGORÍAS (AHORA STOCK REAL REPLICADO PARA CADA UNA) ---
-with tab_stock:
+# --- TAB 2: ESQUEMA VISUAL Y STOCK REAL ---
+with tab_visual:
+    st.subheader("🖼️ Reporte Visual de Insumos")
+    fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
+    
+    # ATENCIÓN: El HTML debe estar totalmente sin sangría (pegado a la izquierda) 
+    # para evitar que Streamlit lo interprete como un bloque de código Markdown.
+    html_content = f"""<div style="background-color: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); max-width: 900px; margin: auto;">
+<div style="text-align: center; color: #8b1c31; font-family: 'Georgia', serif;">
+<h1 style="margin: 0; font-size: 32px; font-weight: bold;">Champlitte {sucursal_in.title()}</h1>
+<h4 style="margin: 5px 0 15px 0; color: #333; letter-spacing: 2px; font-size: 12px; font-family: sans-serif; font-weight: bold;">CONTROL DE INSUMOS</h4>
+<h2 style="margin: 0; font-size: 24px; font-weight: bold;">RESUMEN (TOTALES)</h2>
+<p style="color: #666; font-size: 12px; margin-top: 5px; font-family: sans-serif;">{fecha_str}</p>
+</div>
+<div style="overflow-x: auto;">
+<table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-family: sans-serif; font-size: 14px; min-width: 700px;">
+<thead>
+<tr style="background-color: #8b1c31; color: white; text-align: center; font-size: 12px;">
+<th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
+<th style="padding: 12px;">CANT. PESADA</th>
+<th style="padding: 12px;">CANT. ACTUAL</th>
+<th style="padding: 12px;">CANT. A RESTAR</th>
+<th style="padding: 12px; border-top-right-radius: 8px;">STOCK ACTUALIZADO</th>
+</tr>
+</thead>
+<tbody>"""
+    
+    for cat in ORDEN_CATEGORIAS_OFICIAL:
+        html_content += f"""<tr>
+<td colspan="5" style="padding: 10px 12px; background-color: #f8eef0; color: #8b1c31; font-weight: bold; text-align: left; font-size: 13px; border-bottom: 2px solid #8b1c31; letter-spacing: 1px;">
+📂 {cat.upper()}
+</td>
+</tr>"""
+        
+        query_pesajes = '''
+            SELECT articulo, SUM(resultado_pue) as total_pesado 
+            FROM (
+                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                UNION ALL
+                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+            ) as combinados
+            GROUP BY articulo
+        '''
+        df_pesajes = conn.query(query_pesajes, params={"suc": sucursal_in, "cat": cat}, ttl=0)
+        df_auditoria = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": cat}, ttl=0)
+        
+        productos_dict = productos_por_categoria.get(cat, {})
+        lista_todos = sorted(list(set(list(productos_dict.keys()) + 
+                                      (df_auditoria['articulo'].tolist() if not df_auditoria.empty else []) + 
+                                      (df_pesajes['articulo'].tolist() if not df_pesajes.empty else []))))
+        
+        row_color_alt = False
+        for art in lista_todos:
+            stock_actual = float(df_auditoria[df_auditoria['articulo'] == art]['stock'].iloc[0]) if not df_auditoria.empty and art in df_auditoria['articulo'].values else 0.0
+            cant_pesada = float(df_pesajes[df_pesajes['articulo'] == art]['total_pesado'].iloc[0]) if not df_pesajes.empty and art in df_pesajes['articulo'].values else 0.0
+            
+            cant_a_restar = stock_actual - cant_pesada
+            stock_actualizado = cant_pesada  
+            
+            str_pesada = formato_estricto(cant_pesada)
+            str_actual = formato_estricto(stock_actual)
+            str_restar = formato_estricto(cant_a_restar)
+            str_stock_act = formato_estricto(stock_actualizado)
+            
+            bg_color = "#fffafb" if row_color_alt else "#ffffff"
+            row_color_alt = not row_color_alt
+            
+            html_content += f"""<tr style="background-color: {bg_color}; border-bottom: 1px solid #f0f0f0; text-align: center; color: #8b1c31; font-weight: bold; font-size: 13px;">
+<td style="padding: 12px; text-align: left; color: #333; font-weight: normal;">{art}</td>
+<td style="padding: 12px;">{str_pesada}</td>
+<td style="padding: 12px; color: #555; font-weight: normal;">{str_actual}</td>
+<td style="padding: 12px; color: #d9534f;">{str_restar}</td>
+<td style="padding: 12px; color: #28a745;">{str_stock_act}</td>
+</tr>"""
+            
+    html_content += """</tbody>
+</table>
+</div>
+</div>"""
+    
+    st.write(html_content, unsafe_allow_html=True)
+    
+    st.markdown(f'<br><div style="max-width: 900px; margin: auto;"><a href="https://wa.me/{numero_wa}" target="_blank" style="background-color: #25D366; color: white !important; padding: 15px 20px; text-align: center; text-decoration: none !important; display: block; font-size: 16px; font-weight: bold; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><i class="fa fa-whatsapp"></i> 📞 Enviar Reporte a {sucursal_in.upper()}</a></div><br><br>', unsafe_allow_html=True)
+
+    st.divider()
+
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
 
@@ -820,7 +904,6 @@ with tab_stock:
                 st.session_state.show_toast = f"✅ ¡Inventario convertido para mañana ({categoria_activa_stock})!"
                 st.rerun()
 
-        # --- ADMINISTRADOR DE CATÁLOGO DINÁMICO ---
         with st.expander(f"📝 Administrar Catálogo: {categoria_activa_stock}", expanded=False):
             st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación sin saltar de pestaña.")
             
@@ -949,111 +1032,6 @@ with tab_historial:
                         st.rerun()
             else: st.info("No hay pre-conteos guardados en la bóveda.")
     else: st.info(f"No hay pesajes registrados para {sucursal_in} en esta categoría.")
-
-# --- TAB 4: ESQUEMA VISUAL ---
-with tab_visual:
-    # Obtenemos la fecha y hora actual en la zona de México
-    fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
-    
-    # Iniciamos la construcción del HTML de la "Tarjeta"
-    html_content = f"""
-    <div style="background-color: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); max-width: 900px; margin: auto;">
-        <div style="text-align: center; color: #8b1c31; font-family: 'Georgia', serif;">
-            <h1 style="margin: 0; font-size: 32px; font-weight: bold;">Champlitte {sucursal_in.title()}</h1>
-            <h4 style="margin: 5px 0 15px 0; color: #333; letter-spacing: 2px; font-size: 12px; font-family: sans-serif; font-weight: bold;">CONTROL DE INSUMOS</h4>
-            <h2 style="margin: 0; font-size: 24px; font-weight: bold;">RESUMEN (TOTALES)</h2>
-            <p style="color: #666; font-size: 12px; margin-top: 5px; font-family: sans-serif;">{fecha_str}</p>
-        </div>
-        
-        <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-family: sans-serif; font-size: 14px; min-width: 700px;">
-                <thead>
-                    <tr style="background-color: #8b1c31; color: white; text-align: center; font-size: 12px;">
-                        <th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
-                        <th style="padding: 12px;">CANT. PESADA</th>
-                        <th style="padding: 12px;">CANT. ACTUAL</th>
-                        <th style="padding: 12px;">CANT. A RESTAR</th>
-                        <th style="padding: 12px; border-top-right-radius: 8px;">STOCK ACTUALIZADO</th>
-                    </tr>
-                </thead>
-                <tbody>
-    """
-    
-    # Iteramos sobre las categorías oficiales para agrupar los datos
-    for cat in ORDEN_CATEGORIAS_OFICIAL:
-        # Añadimos la fila separadora de la "Categoría de título"
-        html_content += f"""
-                    <tr>
-                        <td colspan="5" style="padding: 10px 12px; background-color: #f8eef0; color: #8b1c31; font-weight: bold; text-align: left; font-size: 13px; border-bottom: 2px solid #8b1c31; letter-spacing: 1px;">
-                            📂 {cat.upper()}
-                        </td>
-                    </tr>
-        """
-        
-        # Consultamos las cantidades pesadas combinando sesión actual y bóveda
-        query_pesajes = '''
-            SELECT articulo, SUM(resultado_pue) as total_pesado 
-            FROM (
-                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
-                UNION ALL
-                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
-            ) as combinados
-            GROUP BY articulo
-        '''
-        df_pesajes = conn.query(query_pesajes, params={"suc": sucursal_in, "cat": cat}, ttl=0)
-        
-        # Consultamos el stock base (cantidad actual)
-        df_auditoria = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": cat}, ttl=0)
-        
-        # Obtenemos todos los productos de esta categoría
-        productos_dict = productos_por_categoria.get(cat, {})
-        lista_todos = sorted(list(set(list(productos_dict.keys()) + 
-                                      (df_auditoria['articulo'].tolist() if not df_auditoria.empty else []) + 
-                                      (df_pesajes['articulo'].tolist() if not df_pesajes.empty else []))))
-        
-        row_color_alt = False
-        for art in lista_todos:
-            # Extraemos los valores o asignamos 0.0 si no existen
-            stock_actual = float(df_auditoria[df_auditoria['articulo'] == art]['stock'].iloc[0]) if not df_auditoria.empty and art in df_auditoria['articulo'].values else 0.0
-            cant_pesada = float(df_pesajes[df_pesajes['articulo'] == art]['total_pesado'].iloc[0]) if not df_pesajes.empty and art in df_pesajes['articulo'].values else 0.0
-            
-            cant_a_restar = stock_actual - cant_pesada
-            stock_actualizado = cant_pesada  # El stock resultante después del conteo
-            
-            # Formateamos usando tu función estricta de 2 decimales
-            str_pesada = formato_estricto(cant_pesada)
-            str_actual = formato_estricto(stock_actual)
-            str_restar = formato_estricto(cant_a_restar)
-            str_stock_act = formato_estricto(stock_actualizado)
-            
-            # Alternancia sutil de colores de fondo estilo la imagen
-            bg_color = "#fffafb" if row_color_alt else "#ffffff"
-            row_color_alt = not row_color_alt
-            
-            # Generamos la fila
-            html_content += f"""
-                    <tr style="background-color: {bg_color}; border-bottom: 1px solid #f0f0f0; text-align: center; color: #8b1c31; font-weight: bold; font-size: 13px;">
-                        <td style="padding: 12px; text-align: left; color: #333; font-weight: normal;">{art}</td>
-                        <td style="padding: 12px;">{str_pesada}</td>
-                        <td style="padding: 12px; color: #555; font-weight: normal;">{str_actual}</td>
-                        <td style="padding: 12px; color: #d9534f;">{str_restar}</td>
-                        <td style="padding: 12px; color: #28a745;">{str_stock_act}</td>
-                    </tr>
-            """
-            
-    # Cerramos las etiquetas de HTML
-    html_content += """
-                </tbody>
-            </table>
-        </div>
-    </div>
-    """
-    
-    # Renderizamos la tabla en pantalla
-    st.markdown(html_content, unsafe_allow_html=True)
-    
-    # Botón dinámico tipo WhatsApp que cubre el ancho de la tarjeta
-    st.markdown(f'<br><div style="max-width: 900px; margin: auto;"><a href="https://wa.me/{numero_wa}" target="_blank" style="background-color: #25D366; color: white !important; padding: 15px 20px; text-align: center; text-decoration: none !important; display: block; font-size: 16px; font-weight: bold; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><i class="fa fa-whatsapp"></i> 📞 Enviar Reporte a {sucursal_in.upper()}</a></div><br><br>', unsafe_allow_html=True)
 
 components.html("""
     <script>
