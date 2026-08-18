@@ -453,37 +453,3 @@ def generar_word_tarjetas(df):
     table = doc.add_table(rows=rows, cols=cols)
     
     tblBorders = OxmlElement('w:tblBorders')
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        border_el = OxmlElement(f'w:{edge}')
-        border_el.set(qn('w:val'), 'dashed'); border_el.set(qn('w:sz'), '4'); border_el.set(qn('w:space'), '0'); border_el.set(qn('w:color'), '000000')
-        tblBorders.append(border_el)
-    table._tbl.tblPr.append(tblBorders)
-    
-    for idx, row_data in df.iterrows():
-        r = idx // cols
-        c_idx = idx % cols
-        cell = table.cell(r, c_idx)
-        cell.width = Cm(6)
-        table.rows[r].height = Cm(4)
-        table.rows[r].height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
-        
-        tcVAlign = OxmlElement('w:vAlign')
-        tcVAlign.set(qn('w:val'), 'center')
-        cell._tc.get_or_add_tcPr().append(tcVAlign)
-        
-        articulo, resultado_str = str(row_data['articulo']), formato_estricto(row_data['resultado_pue'])
-        if "PZA" in articulo.upper() and resultado_str.endswith(".00"): resultado_str = resultado_str[:-3]
-        
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run1 = p.add_run(f"{articulo}\n")
-        run1.font.size, run1.bold = Pt(8), True
-        run2 = p.add_run(f"\n{resultado_str}")
-        run2.font.size, run2.bold = Pt(12), True
-
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-# ------------------ 4
