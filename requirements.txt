@@ -2,7 +2,7 @@ streamlit
 pandas
 SQLAlchemy
 pytz
-fpdf
+fpdf2
 python-docx
 PyPDF2
 psycopg2-binary
