@@ -1021,7 +1021,8 @@ with tab_reportes:
 <h5 style="text-align: center; margin-top: 5px; color: #555; letter-spacing: 2px;">PASTELERÍA</h5>
 <h3 style="color: #8B1A20; text-align: center; font-size: 22px;">RESUMEN ({categoria.upper()})</h3>
 <p style="text-align: center; font-size: 12px; color: #666;">{fecha_reporte}</p>
-<table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+<div style="overflow-x: auto;">
+<table style="width: 100%; min-width: 500px; border-collapse: collapse; margin-top: 15px;">
 <thead>
 <tr style="background-color: #8B1A20; color: white; font-size: 13px;">
 <th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
@@ -1045,6 +1046,7 @@ with tab_reportes:
         html_tabla += """
 </tbody>
 </table>
+</div>
 </div>"""
         
         with st.expander(f"👁️ Ver Reporte Detallado - {categoria}", expanded=False):
