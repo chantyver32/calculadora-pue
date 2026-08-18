@@ -340,10 +340,18 @@ def mostrar_popup_exito():
     
     def avanzar_y_cerrar():
         if not nuevo_art:
-            if st.session_state.auto_index < num_opciones - 1:
-                st.session_state.auto_index += 1
+            lista_opciones = datos.get("opciones", [])
+            if articulo in lista_opciones:
+                idx_actual = lista_opciones.index(articulo)
+                if idx_actual < len(lista_opciones) - 1:
+                    st.session_state.auto_index = idx_actual + 1
+                else:
+                    st.session_state.pending_transition = True
             else:
-                st.session_state.pending_transition = True
+                if st.session_state.auto_index < num_opciones - 1:
+                    st.session_state.auto_index += 1
+                else:
+                    st.session_state.pending_transition = True
         del st.session_state.item_a_guardar
 
     with col1:
@@ -531,7 +539,13 @@ with tab_calc:
                 opciones.append(row['articulo'])
             
     def avanzar_flujo():
-        if len(opciones) > 0 and st.session_state.auto_index < len(opciones) - 1:
+        if art_sel in opciones:
+            idx_actual = opciones.index(art_sel)
+            if idx_actual < len(opciones) - 1:
+                st.session_state.auto_index = idx_actual + 1
+            else:
+                st.session_state.pending_transition = True
+        elif len(opciones) > 0 and st.session_state.auto_index < len(opciones) - 1:
             st.session_state.auto_index += 1
         else:
             st.session_state.pending_transition = True
@@ -660,7 +674,8 @@ with tab_calc:
                             "nuevo_art": nuevo_art,
                             "modo_preconteo": modo_preconteo,
                             "fecha_mexico": fecha_mexico,
-                            "num_opciones": len(opciones)
+                            "num_opciones": len(opciones),
+                            "opciones": opciones
                         }
                         st.rerun()
             except Exception as e: st.error(f"Error al procesar: {e}")
