@@ -824,7 +824,8 @@ No hay diferencias registradas en el stock para esta sucursal.
         with conn.session as s:
             for cat_upd in ORDEN_CATEGORIAS_OFICIAL:
                 # 1. Recuperar el stock pesado para hacer el salto a la cantidad anterior
-                query_pesajes_maestro = text("""
+                # CORRECCIÓN AQUÍ: Quitamos la función text() y dejamos un string puro.
+                query_pesajes_maestro = """
                     SELECT articulo, SUM(resultado_pue) as total_pesado 
                     FROM (
                         SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
@@ -832,7 +833,7 @@ No hay diferencias registradas en el stock para esta sucursal.
                         SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
                     ) as combinados
                     GROUP BY articulo
-                """)
+                """
                 df_pesajes_cat = conn.query(query_pesajes_maestro, params={"suc": sucursal_in, "cat": cat_upd}, ttl=0)
                 
                 # 2. Actualizar el stock
