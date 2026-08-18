@@ -866,13 +866,13 @@ No hay diferencias registradas en el stock para esta sucursal.
         df_stock_master["cantidad_a_restar"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
 
         df_stock_display = df_stock_master[[
-            "stock", "articulo", "desglose_pesada", "cantidad_a_restar", "total_pesado"
+            "articulo", "desglose_pesada", "stock", "cantidad_a_restar", "total_pesado"
         ]].rename(columns={
-            "stock": "Cantidad Anterior",
             "articulo": "Producto",
             "desglose_pesada": "Cantidad Pesada",
+            "stock": "Cantidad Anterior",
             "cantidad_a_restar": "Cantidad a Restar",
-            "total_pesado": "Stock Actualizado"
+            "total_pesado": "Stock Actual"
         })
 
         with st.expander(f"📦 Tabla de Stock Real - {categoria_activa_stock}", expanded=False):
@@ -880,7 +880,7 @@ No hay diferencias registradas en el stock para esta sucursal.
                 df_stock_display,
                 use_container_width=True,
                 hide_index=True,
-                disabled=["Producto", "Cantidad Pesada", "Cantidad a Restar", "Stock Actualizado"],
+                disabled=["Producto", "Cantidad Pesada", "Cantidad a Restar", "Stock Actual"],
                 key=f"editor_stock_real_{categoria_activa_stock}"
             )
 
