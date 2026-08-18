@@ -492,7 +492,6 @@ def generar_word_tarjetas(df):
     return buffer
 
 # ------------------ 4. INTERFAZ PRINCIPAL ------------------
-# HEMOS MOVIDO EL ESQUEMA VISUAL A LA PESTAÑA 2, Y REDUCIDO LAS PESTAÑAS A 3.
 tab_calc, tab_visual, tab_historial = st.tabs(["🧮 Pesaje", "🖼️ Esquema Visual", "📋 Reportes"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA (PESAJE) ---
@@ -718,8 +717,6 @@ with tab_visual:
     st.subheader("🖼️ Reporte Visual de Insumos")
     fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
     
-    # ATENCIÓN: El HTML debe estar totalmente sin sangría (pegado a la izquierda) 
-    # para evitar que Streamlit lo interprete como un bloque de código Markdown.
     html_content = f"""<div style="background-color: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); max-width: 900px; margin: auto;">
 <div style="text-align: center; color: #8b1c31; font-family: 'Georgia', serif;">
 <h1 style="margin: 0; font-size: 32px; font-weight: bold;">Champlitte {sucursal_in.title()}</h1>
@@ -731,22 +728,19 @@ with tab_visual:
 <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-family: sans-serif; font-size: 14px; min-width: 700px;">
 <thead>
 <tr style="background-color: #8b1c31; color: white; text-align: center; font-size: 12px;">
-<th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
+<th style="padding: 12px; border-top-left-radius: 8px;">CANT. A RESTAR</th>
+<th style="padding: 12px; text-align: left;">PRODUCTO</th>
 <th style="padding: 12px;">CANT. PESADA</th>
 <th style="padding: 12px;">CANT. ACTUAL</th>
-<th style="padding: 12px;">CANT. A RESTAR</th>
 <th style="padding: 12px; border-top-right-radius: 8px;">STOCK ACTUALIZADO</th>
 </tr>
 </thead>
 <tbody>"""
     
+    hay_elementos_con_diferencia = False
+    row_color_alt = False
+
     for cat in ORDEN_CATEGORIAS_OFICIAL:
-        html_content += f"""<tr>
-<td colspan="5" style="padding: 10px 12px; background-color: #f8eef0; color: #8b1c31; font-weight: bold; text-align: left; font-size: 13px; border-bottom: 2px solid #8b1c31; letter-spacing: 1px;">
-📂 {cat.upper()}
-</td>
-</tr>"""
-        
         query_pesajes = '''
             SELECT articulo, SUM(resultado_pue) as total_pesado 
             FROM (
@@ -764,39 +758,58 @@ with tab_visual:
                                       (df_auditoria['articulo'].tolist() if not df_auditoria.empty else []) + 
                                       (df_pesajes['articulo'].tolist() if not df_pesajes.empty else []))))
         
-        row_color_alt = False
+        filas_categoria = ""
         for art in lista_todos:
             stock_actual = float(df_auditoria[df_auditoria['articulo'] == art]['stock'].iloc[0]) if not df_auditoria.empty and art in df_auditoria['articulo'].values else 0.0
             cant_pesada = float(df_pesajes[df_pesajes['articulo'] == art]['total_pesado'].iloc[0]) if not df_pesajes.empty and art in df_pesajes['articulo'].values else 0.0
             
-            cant_a_restar = stock_actual - cant_pesada
+            cant_a_restar = truncar_dos_decimales(stock_actual - cant_pesada)
+            
+            # FILTRO: Omitir si no hay diferencia real en el stock
+            if abs(cant_a_restar) < 0.001:
+                continue
+            
+            hay_elementos_con_diferencia = True
             stock_actualizado = cant_pesada  
             
+            # Formato de cantidad a restar con signo menos (-) al inicio
+            str_restar = f"-{formato_estricto(abs(cant_a_restar))}" if cant_a_restar > 0 else f"+{formato_estricto(abs(cant_a_restar))}"
             str_pesada = formato_estricto(cant_pesada)
             str_actual = formato_estricto(stock_actual)
-            str_restar = formato_estricto(cant_a_restar)
             str_stock_act = formato_estricto(stock_actualizado)
             
             bg_color = "#fffafb" if row_color_alt else "#ffffff"
             row_color_alt = not row_color_alt
             
-            html_content += f"""<tr style="background-color: {bg_color}; border-bottom: 1px solid #f0f0f0; text-align: center; color: #8b1c31; font-weight: bold; font-size: 13px;">
+            filas_categoria += f"""<tr style="background-color: {bg_color}; border-bottom: 1px solid #f0f0f0; text-align: center; color: #8b1c31; font-weight: bold; font-size: 13px;">
+<td style="padding: 12px; color: #d9534f; font-weight: bold;">{str_restar}</td>
 <td style="padding: 12px; text-align: left; color: #333; font-weight: normal;">{art}</td>
 <td style="padding: 12px;">{str_pesada}</td>
 <td style="padding: 12px; color: #555; font-weight: normal;">{str_actual}</td>
-<td style="padding: 12px; color: #d9534f;">{str_restar}</td>
 <td style="padding: 12px; color: #28a745;">{str_stock_act}</td>
 </tr>"""
-            
+
+        # Solo renderizar el encabezado de categoría si contiene al menos un producto con diferencia
+        if filas_categoria:
+            html_content += f"""<tr>
+<td colspan="5" style="padding: 10px 12px; background-color: #f8eef0; color: #8b1c31; font-weight: bold; text-align: left; font-size: 13px; border-bottom: 2px solid #8b1c31; letter-spacing: 1px;">
+📂 {cat.upper()}
+</td>
+</tr>""" + filas_categoria
+
+    if not hay_elementos_con_diferencia:
+        html_content += """<tr>
+<td colspan="5" style="padding: 20px; text-align: center; color: #666; font-style: italic;">
+No hay diferencias registradas en el stock para esta sucursal.
+</td>
+</tr>"""
+
     html_content += """</tbody>
 </table>
 </div>
 </div>"""
     
     st.write(html_content, unsafe_allow_html=True)
-    
-    st.markdown(f'<br><div style="max-width: 900px; margin: auto;"><a href="https://wa.me/{numero_wa}" target="_blank" style="background-color: #25D366; color: white !important; padding: 15px 20px; text-align: center; text-decoration: none !important; display: block; font-size: 16px; font-weight: bold; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><i class="fa fa-whatsapp"></i> 📞 Enviar Reporte a {sucursal_in.upper()}</a></div><br><br>', unsafe_allow_html=True)
-
     st.divider()
 
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
