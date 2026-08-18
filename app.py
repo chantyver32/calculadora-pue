@@ -704,7 +704,6 @@ with tab_stock:
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
 
-    # ---------------- NUEVO BLOQUE LECTOR DE PDF ----------------
     with st.expander("📄 Subir PDF del Sistema (Actualizar Stock Inicial Automáticamente)", expanded=False):
         st.info("Sube el PDF generado por tu sistema. El algoritmo buscará los nombres de los artículos y extraerá la cantidad de stock automáticamente.")
         archivo_pdf = st.file_uploader("Sube el archivo PDF aquí:", type=["pdf"], key="pdf_uploader_stock")
@@ -723,7 +722,6 @@ with tab_stock:
                     for _, row in df_cat_full.iterrows():
                         art = str(row['articulo'])
                         cat_art = str(row['categoria'])
-                        # Busca el nombre del artículo seguido de espacios/guiones y luego captura el número
                         patron = re.escape(art) + r"[\s\.\-_:]+([0-9]+(?:\.[0-9]+)?)"
                         match = re.search(patron, texto_pdf, re.IGNORECASE)
                         
@@ -740,7 +738,6 @@ with tab_stock:
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Error al procesar el PDF: {e}. Asegúrate de que el PDF contiene texto seleccionable.")
-    # -----------------------------------------------------------
 
     for categoria_activa_stock in ORDEN_CATEGORIAS_OFICIAL:
         st.markdown(f"### 📂 Categoría: {categoria_activa_stock}")
@@ -1019,41 +1016,36 @@ with tab_reportes:
         
         datos_pdf.append({"categoria": categoria, "df": df_final})
         
-        html_tabla = f"""
-        <div style="background-color: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 20px; font-family: sans-serif; color: #333;">
-            <h1 style="color: #8B1A20; text-align: center; margin-bottom: 0; font-size: 28px;">Champlitte {sucursal_in}</h1>
-            <h5 style="text-align: center; margin-top: 5px; color: #555; letter-spacing: 2px;">PASTELERÍA</h5>
-            <h3 style="color: #8B1A20; text-align: center; font-size: 22px;">RESUMEN ({categoria.upper()})</h3>
-            <p style="text-align: center; font-size: 12px; color: #666;">{fecha_reporte}</p>
-            
-            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-                <thead>
-                    <tr style="background-color: #8B1A20; color: white; font-size: 13px;">
-                        <th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
-                        <th style="padding: 12px; text-align: center;">SISTEMA (ANT.)</th>
-                        <th style="padding: 12px; text-align: center;">FÍSICO (CÓMO QUEDA)</th>
-                        <th style="padding: 12px; text-align: center; border-top-right-radius: 8px;">A RESTAR (BAJA)</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
+        html_tabla = f"""<div style="background-color: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 20px; font-family: sans-serif; color: #333;">
+<h1 style="color: #8B1A20; text-align: center; margin-bottom: 0; font-size: 28px;">Champlitte {sucursal_in}</h1>
+<h5 style="text-align: center; margin-top: 5px; color: #555; letter-spacing: 2px;">PASTELERÍA</h5>
+<h3 style="color: #8B1A20; text-align: center; font-size: 22px;">RESUMEN ({categoria.upper()})</h3>
+<p style="text-align: center; font-size: 12px; color: #666;">{fecha_reporte}</p>
+<table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+<thead>
+<tr style="background-color: #8B1A20; color: white; font-size: 13px;">
+<th style="padding: 12px; text-align: left; border-top-left-radius: 8px;">PRODUCTO</th>
+<th style="padding: 12px; text-align: center;">SISTEMA (ANT.)</th>
+<th style="padding: 12px; text-align: center;">FÍSICO (CÓMO QUEDA)</th>
+<th style="padding: 12px; text-align: center; border-top-right-radius: 8px;">A RESTAR (BAJA)</th>
+</tr>
+</thead>
+<tbody>"""
         
         for idx, row in df_final.iterrows():
             bg_color = "#FFFFFF" if idx % 2 == 0 else "#FDF3F4"
             html_tabla += f"""
-                <tr style="background-color: {bg_color}; font-size: 14px; border-bottom: 1px solid #eee;">
-                    <td style="padding: 12px; color: #333;">{row['articulo']}</td>
-                    <td style="padding: 12px; text-align: center; color: #666;">{formato_estricto(row['stock'])}</td>
-                    <td style="padding: 12px; text-align: center; color: #1f77b4; font-weight: bold;">{formato_estricto(row['total_pesado'])}</td>
-                    <td style="padding: 12px; text-align: center; color: #8B1A20; font-weight: bold;">{formato_estricto(row['baja_real'])}</td>
-                </tr>
-            """
+<tr style="background-color: {bg_color}; font-size: 14px; border-bottom: 1px solid #eee;">
+<td style="padding: 12px; color: #333;">{row['articulo']}</td>
+<td style="padding: 12px; text-align: center; color: #666;">{formato_estricto(row['stock'])}</td>
+<td style="padding: 12px; text-align: center; color: #1f77b4; font-weight: bold;">{formato_estricto(row['total_pesado'])}</td>
+<td style="padding: 12px; text-align: center; color: #8B1A20; font-weight: bold;">{formato_estricto(row['baja_real'])}</td>
+</tr>"""
             
         html_tabla += """
-                </tbody>
-            </table>
-        </div>
-        """
+</tbody>
+</table>
+</div>"""
         
         with st.expander(f"👁️ Ver Reporte Detallado - {categoria}", expanded=False):
             st.markdown(html_tabla, unsafe_allow_html=True)
