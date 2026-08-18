@@ -728,10 +728,10 @@ with tab_visual:
 <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-family: sans-serif; font-size: 14px; min-width: 700px;">
 <thead>
 <tr style="background-color: #8b1c31; color: white; text-align: center; font-size: 12px;">
-<th style="padding: 12px; border-top-left-radius: 8px;">CANT. A RESTAR</th>
-<th style="padding: 12px; text-align: left;">PRODUCTO</th>
+<th style="padding: 12px; border-top-left-radius: 8px; text-align: left;">PRODUCTO</th>
 <th style="padding: 12px;">CANT. PESADA</th>
-<th style="padding: 12px;">CANT. ACTUAL</th>
+<th style="padding: 12px;">CANT. ANTERIOR</th>
+<th style="padding: 12px;">CANT. A RESTAR</th>
 <th style="padding: 12px; border-top-right-radius: 8px;">STOCK ACTUALIZADO</th>
 </tr>
 </thead>
@@ -782,10 +782,10 @@ with tab_visual:
             row_color_alt = not row_color_alt
             
             filas_categoria += f"""<tr style="background-color: {bg_color}; border-bottom: 1px solid #f0f0f0; text-align: center; color: #8b1c31; font-weight: bold; font-size: 13px;">
-<td style="padding: 12px; color: #d9534f; font-weight: bold;">{str_restar}</td>
 <td style="padding: 12px; text-align: left; color: #333; font-weight: normal;">{art}</td>
 <td style="padding: 12px;">{str_pesada}</td>
 <td style="padding: 12px; color: #555; font-weight: normal;">{str_actual}</td>
+<td style="padding: 12px; color: #d9534f; font-weight: bold;">{str_restar}</td>
 <td style="padding: 12px; color: #28a745;">{str_stock_act}</td>
 </tr>"""
 
@@ -880,6 +880,7 @@ No hay diferencias registradas en el stock para esta sucursal.
                 df_stock_display,
                 use_container_width=True,
                 hide_index=True,
+                column_order=["Producto", "Cantidad Pesada", "Cantidad Anterior", "Cantidad a Restar", "Stock Actual"],
                 disabled=["Producto", "Cantidad Pesada", "Cantidad a Restar", "Stock Actual"],
                 key=f"editor_stock_real_{categoria_activa_stock}"
             )
