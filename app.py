@@ -638,48 +638,26 @@ with tab_calc:
         if datos_listos:
             fecha_mexico = datetime.now(zona_mx).strftime("%Y-%m-%d %H:%M:%S")
             try:
-                with conn.session as s:
-                    q_bov = text("SELECT COALESCE(SUM(resultado_pue), 0) FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)")
-                    total_boveda = float(s.execute(q_bov, {"art": art_sel, "suc": sucursal_in}).scalar() or 0.0)
-                    
-                    if total_boveda > 0 and (resultado < total_boveda or resultado == 0):
-                        s.execute(text("DELETE FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)"), {"art": art_sel, "suc": sucursal_in})
-                        s.execute(text("DELETE FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc"), {"art": art_sel, "suc": sucursal_in})
-                        
-                        if resultado > 0:
-                            s.execute(text("""INSERT INTO pesajes_guardados 
-                                         (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
-                                         VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df, FALSE)"""),
-                                      {"suc": sucursal_in, "fh": fecha_mexico, "art": art_sel, "cat": categoria_actual, "pb": peso_bruto if not modo_preconteo else 0, 
-                                       "tara": tara_total if not modo_preconteo else 0, "pue": pue_final if not modo_preconteo else 0, 
-                                       "rp": resultado, "df": "[AUTO-AJUSTE BÓVEDA] " + formula})
-                        s.commit()
-                        
-                        if not nuevo_art:
-                            avanzar_flujo()
-                            
-                        st.session_state.show_toast = f"✅ Bóveda auto-ajustada (Se detectó menos cantidad: de {total_boveda} a {resultado})"
-                        st.rerun() 
-                    
-                    else:
-                        st.session_state.item_a_guardar = {
-                            "articulo": art_sel,
-                            "resultado": resultado,
-                            "sucursal": sucursal_in,
-                            "categoria": categoria_actual,
-                            "peso_bruto": peso_bruto if not modo_preconteo else 0.0,
-                            "tara": tara_total if not modo_preconteo else 0.0,
-                            "pue": pue_final if not modo_preconteo else 0.0,
-                            "formula": formula,
-                            "nuevo_art": nuevo_art,
-                            "modo_preconteo": modo_preconteo,
-                            "fecha_mexico": fecha_mexico,
-                            "num_opciones": len(opciones),
-                            "opciones": opciones
-                        }
-                        st.rerun()
-            except Exception as e: st.error(f"Error al procesar: {e}")
-        else: st.error("❌ Error: Revisa los datos ingresados.")
+                st.session_state.item_a_guardar = {
+                    "articulo": art_sel,
+                    "resultado": resultado,
+                    "sucursal": sucursal_in,
+                    "categoria": categoria_actual,
+                    "peso_bruto": peso_bruto if not modo_preconteo else 0.0,
+                    "tara": tara_total if not modo_preconteo else 0.0,
+                    "pue": pue_final if not modo_preconteo else 0.0,
+                    "formula": formula,
+                    "nuevo_art": nuevo_art,
+                    "modo_preconteo": modo_preconteo,
+                    "fecha_mexico": fecha_mexico,
+                    "num_opciones": len(opciones),
+                    "opciones": opciones
+                }
+                st.rerun()
+            except Exception as e: 
+                st.error(f"Error al procesar: {e}")
+        else: 
+            st.error("❌ Error: Revisa los datos ingresados.")
         
     if "item_a_guardar" in st.session_state:
         mostrar_popup_exito()
@@ -1052,8 +1030,8 @@ with tab_historial:
                 with conn.session as s:
                     for item in sel:
                         id_val = int(item.split(" | ")[0].replace("ID ", ""))
-                        s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula)
-                                     SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula 
+                        s.execute(text("""INSERT INTO pesajes_guardados (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte)
+                                     SELECT sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, FALSE
                                      FROM pesajes_individuales WHERE id = :id"""), {"id": id_val})
                         s.execute(text("DELETE FROM pesajes_individuales WHERE id = :id"), {"id": id_val})
                     s.commit()
