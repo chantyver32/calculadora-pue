@@ -280,10 +280,11 @@ def truncar_dos_decimales(valor):
     return float(f"{entero}.{decimal[:2]}")
 
 def formato_estricto(valor):
-    if pd.isna(valor) or valor is None: return "0.00"
+    if pd.isna(valor) or valor is None: return "0"
     s = f"{float(valor):.10f}" 
     entero, decimal = s.split('.')
-    return f"{entero}.{decimal[:2]}"
+    dec_part = decimal[:2]
+    return entero if dec_part == "00" else f"{entero}.{dec_part}"
 
 @st.dialog("✅ Registrado", width="large")
 def mostrar_popup_exito():
@@ -741,33 +742,44 @@ with tab_visual:
     row_color_alt = False
 
     for cat in ORDEN_CATEGORIAS_OFICIAL:
-        query_pesajes = '''
-            SELECT articulo, SUM(resultado_pue) as total_pesado 
+        query_pesajes_raw = '''
+            SELECT articulo, resultado_pue 
             FROM (
                 SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
                 UNION ALL
                 SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL) AND detalle_formula NOT LIKE '%[OMITIDO]%'
             ) as combinados
-            GROUP BY articulo
         '''
-        df_pesajes = conn.query(query_pesajes, params={"suc": sucursal_in, "cat": cat}, ttl=0)
+        df_pesajes_raw = conn.query(query_pesajes_raw, params={"suc": sucursal_in, "cat": cat}, ttl=0)
+        
+        dict_pesajes = {}
+        if not df_pesajes_raw.empty:
+            for art, group in df_pesajes_raw.groupby('articulo'):
+                valores = group['resultado_pue'].tolist()
+                total = truncar_dos_decimales(sum(valores))
+                str_vals = [formato_estricto(v) for v in valores]
+                desglose = f"{' + '.join(str_vals)} = {formato_estricto(total)}" if len(valores) > 1 else formato_estricto(total)
+                dict_pesajes[art] = {'total': total, 'desglose': desglose}
+                
         df_auditoria = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": cat}, ttl=0)
         
         productos_dict = productos_por_categoria.get(cat, {})
         lista_todos = sorted(list(set(list(productos_dict.keys()) + 
                                       (df_auditoria['articulo'].tolist() if not df_auditoria.empty else []) + 
-                                      (df_pesajes['articulo'].tolist() if not df_pesajes.empty else []))))
+                                      (list(dict_pesajes.keys())))))
         
         filas_categoria = ""
         for art in lista_todos:
             stock_actual = float(df_auditoria[df_auditoria['articulo'] == art]['stock'].iloc[0]) if not df_auditoria.empty and art in df_auditoria['articulo'].values else 0.0
             
-            tiene_pesaje = not df_pesajes.empty and art in df_pesajes['articulo'].values
+            tiene_pesaje = art in dict_pesajes
             
             if tiene_pesaje:
-                cant_pesada = float(df_pesajes[df_pesajes['articulo'] == art]['total_pesado'].iloc[0])
+                cant_pesada = dict_pesajes[art]['total']
+                str_pesada = dict_pesajes[art]['desglose']
             else:
                 cant_pesada = stock_actual 
+                str_pesada = formato_estricto(cant_pesada)
                 
             cant_a_restar = truncar_dos_decimales(stock_actual - cant_pesada)
             
@@ -778,7 +790,6 @@ with tab_visual:
             stock_actualizado = cant_pesada  
             
             str_restar = f"-{formato_estricto(abs(cant_a_restar))}" if cant_a_restar > 0 else f"+{formato_estricto(abs(cant_a_restar))}"
-            str_pesada = formato_estricto(cant_pesada)
             str_actual = formato_estricto(stock_actual)
             str_stock_act = formato_estricto(stock_actualizado)
             
@@ -894,11 +905,11 @@ No hay diferencias registradas en el stock para esta sucursal.
             df_stock_master = pd.merge(df_stock_master, df_total_pesado, on="articulo", how="left")
         else:
             df_stock_master["total_pesado"] = float('nan') 
-            df_stock_master["desglose_pesada"] = "0.00"
+            df_stock_master["desglose_pesada"] = "0"
 
         df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
         df_stock_master["total_pesado"] = df_stock_master["total_pesado"].fillna(df_stock_master["stock"])
-        df_stock_master["desglose_pesada"] = df_stock_master["desglose_pesada"].fillna("0.00")
+        df_stock_master["desglose_pesada"] = df_stock_master["desglose_pesada"].fillna("0")
         df_stock_master["cantidad_a_restar"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
 
         df_stock_display = df_stock_master[[
