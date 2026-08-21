@@ -728,9 +728,9 @@ with tab_visual:
 <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-family: sans-serif; font-size: 14px; min-width: 700px;">
 <thead>
 <tr style="background-color: #8b1c31; color: white; text-align: center; font-size: 12px;">
-<th style="padding: 12px; border-top-left-radius: 8px; text-align: left;">PRODUCTO</th>
+<th style="padding: 12px; border-top-left-radius: 8px;">CANT. ANTERIOR</th>
 <th style="padding: 12px;">CANT. PESADA</th>
-<th style="padding: 12px;">CANT. ANTERIOR</th>
+<th style="padding: 12px; text-align: left;">PRODUCTO</th>
 <th style="padding: 12px;">CANT. A RESTAR</th>
 <th style="padding: 12px; border-top-right-radius: 8px;">STOCK ACTUALIZADO</th>
 </tr>
@@ -744,9 +744,9 @@ with tab_visual:
         query_pesajes = '''
             SELECT articulo, SUM(resultado_pue) as total_pesado 
             FROM (
-                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
                 UNION ALL
-                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL) AND detalle_formula NOT LIKE '%[OMITIDO]%'
             ) as combinados
             GROUP BY articulo
         '''
@@ -767,19 +767,16 @@ with tab_visual:
             if tiene_pesaje:
                 cant_pesada = float(df_pesajes[df_pesajes['articulo'] == art]['total_pesado'].iloc[0])
             else:
-                # Si no hay pesajes, se asume que el stock sigue siendo el inicial (no cae a 0)
                 cant_pesada = stock_actual 
                 
             cant_a_restar = truncar_dos_decimales(stock_actual - cant_pesada)
             
-            # FILTRO: Omitir si no hay diferencia real en el stock
             if abs(cant_a_restar) < 0.001:
                 continue
             
             hay_elementos_con_diferencia = True
             stock_actualizado = cant_pesada  
             
-            # Formato de cantidad a restar con signo menos (-) al inicio
             str_restar = f"-{formato_estricto(abs(cant_a_restar))}" if cant_a_restar > 0 else f"+{formato_estricto(abs(cant_a_restar))}"
             str_pesada = formato_estricto(cant_pesada)
             str_actual = formato_estricto(stock_actual)
@@ -789,14 +786,13 @@ with tab_visual:
             row_color_alt = not row_color_alt
             
             filas_categoria += f"""<tr style="background-color: {bg_color}; border-bottom: 1px solid #f0f0f0; text-align: center; color: #8b1c31; font-weight: bold; font-size: 13px;">
-<td style="padding: 12px; text-align: left; color: #333; font-weight: normal;">{art}</td>
-<td style="padding: 12px;">{str_pesada}</td>
 <td style="padding: 12px; color: #555; font-weight: normal;">{str_actual}</td>
+<td style="padding: 12px;">{str_pesada}</td>
+<td style="padding: 12px; text-align: left; color: #333; font-weight: normal;">{art}</td>
 <td style="padding: 12px; color: #d9534f; font-weight: bold;">{str_restar}</td>
 <td style="padding: 12px; color: #28a745;">{str_stock_act}</td>
 </tr>"""
 
-        # Solo renderizar el encabezado de categoría si contiene al menos un producto con diferencia
         if filas_categoria:
             html_content += f"""<tr>
 <td colspan="5" style="padding: 10px 12px; background-color: #f8eef0; color: #8b1c31; font-weight: bold; text-align: left; font-size: 13px; border-bottom: 2px solid #8b1c31; letter-spacing: 1px;">
@@ -819,24 +815,20 @@ No hay diferencias registradas en el stock para esta sucursal.
     st.write(html_content, unsafe_allow_html=True)
     st.divider()
 
-    # --- BOTÓN MAESTRO DE ACTUALIZACIÓN ---
     if st.button("🔄 ACTUALIZAR STOCK PARA MAÑANA (TODAS LAS CATEGORÍAS)", type="primary", use_container_width=True):
         with conn.session as s:
             for cat_upd in ORDEN_CATEGORIAS_OFICIAL:
-                # 1. Recuperar el stock pesado para hacer el salto a la cantidad anterior
-                # CORRECCIÓN AQUÍ: Quitamos la función text() y dejamos un string puro.
                 query_pesajes_maestro = """
                     SELECT articulo, SUM(resultado_pue) as total_pesado 
                     FROM (
-                        SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                        SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
                         UNION ALL
-                        SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+                        SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL) AND detalle_formula NOT LIKE '%[OMITIDO]%'
                     ) as combinados
                     GROUP BY articulo
                 """
                 df_pesajes_cat = conn.query(query_pesajes_maestro, params={"suc": sucursal_in, "cat": cat_upd}, ttl=0)
                 
-                # 2. Actualizar el stock
                 if not df_pesajes_cat.empty:
                     for _, row_p in df_pesajes_cat.iterrows():
                         art_m = row_p["articulo"]
@@ -848,7 +840,6 @@ No hay diferencias registradas en el stock para esta sucursal.
                                          SET stock = EXCLUDED.stock"""), 
                                       {"suc": sucursal_in, "art": art_m, "cat": cat_upd, "stk": nueva_base_m})
                 
-                # 3. Limpiar sesión (eliminar pesajes actuales, dejar bóveda marcada como aplicada)
                 s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
                 s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
             
@@ -867,9 +858,9 @@ No hay diferencias registradas en el stock para esta sucursal.
         query_unificada = """
             SELECT articulo, resultado_pue 
             FROM (
-                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat
+                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
                 UNION ALL
-                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL)
+                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND (aplicado_en_corte = FALSE OR aplicado_en_corte IS NULL) AND detalle_formula NOT LIKE '%[OMITIDO]%'
             ) as combinados
         """
         df_raw = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria_activa_stock}, ttl=0)
@@ -902,25 +893,20 @@ No hay diferencias registradas en el stock para esta sucursal.
         if not df_total_pesado.empty:
             df_stock_master = pd.merge(df_stock_master, df_total_pesado, on="articulo", how="left")
         else:
-            # Usar float('nan') para que fillna identifique dónde no hubo pesajes
             df_stock_master["total_pesado"] = float('nan') 
             df_stock_master["desglose_pesada"] = "0.00"
 
-        # Llenar stock vacío con 0.0
         df_stock_master["stock"] = df_stock_master["stock"].fillna(0.0)
-        
-        # FIX: Si un producto NO tiene pesaje activo, asumimos que su stock actual es igual a su cantidad anterior
         df_stock_master["total_pesado"] = df_stock_master["total_pesado"].fillna(df_stock_master["stock"])
         df_stock_master["desglose_pesada"] = df_stock_master["desglose_pesada"].fillna("0.00")
-
         df_stock_master["cantidad_a_restar"] = df_stock_master["stock"] - df_stock_master["total_pesado"]
 
         df_stock_display = df_stock_master[[
-            "articulo", "desglose_pesada", "stock", "cantidad_a_restar", "total_pesado"
+            "stock", "desglose_pesada", "articulo", "cantidad_a_restar", "total_pesado"
         ]].rename(columns={
-            "articulo": "Producto",
-            "desglose_pesada": "Cantidad Pesada",
             "stock": "Cantidad Anterior",
+            "desglose_pesada": "Cantidad Pesada",
+            "articulo": "Producto",
             "cantidad_a_restar": "Cantidad a Restar",
             "total_pesado": "Stock Actual"
         })
@@ -930,8 +916,8 @@ No hay diferencias registradas en el stock para esta sucursal.
                 df_stock_display,
                 use_container_width=True,
                 hide_index=True,
-                column_order=["Producto", "Cantidad Pesada", "Cantidad Anterior", "Cantidad a Restar", "Stock Actual"],
-                disabled=["Producto", "Cantidad Pesada", "Cantidad a Restar", "Stock Actual"],
+                column_order=["Cantidad Anterior", "Cantidad Pesada", "Producto", "Cantidad a Restar", "Stock Actual"],
+                disabled=["Cantidad Pesada", "Producto", "Cantidad a Restar", "Stock Actual"],
                 key=f"editor_stock_real_{categoria_activa_stock}"
             )
 
