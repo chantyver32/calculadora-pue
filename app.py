@@ -768,7 +768,7 @@ with tab_visual:
             hay_elementos_con_diferencia = True
             stock_actualizado = cant_pesada  
             
-            str_restar = f"-{formato_estricto(abs(cant_a_restar))}" if cant_a_restar > 0 else f"+{formato_estricto(abs(cant_a_restar))}"
+            str_restar = f"-{formato_estricto(abs(cant_a_restar))}" if cant_a_restar > 0 else ""
             str_actual = formato_estricto(stock_actual)
             str_stock_act = formato_estricto(stock_actualizado)
             
