@@ -337,7 +337,8 @@ def mostrar_popup_exito():
     
     st.divider()
     
-    col1, col2, col3 = st.columns([1, 1, 1])
+    # Aquí cambiamos a 2 columnas para poder apilar los botones en col2
+    col1, col2 = st.columns([1, 1])
     
     def avanzar_y_cerrar():
         if not nuevo_art:
@@ -400,7 +401,7 @@ def mostrar_popup_exito():
                 st.session_state.show_toast = "✅ Trasladado a la Bóveda."
                 st.rerun()
 
-    with col3:
+        # Botón de Cancelar situado debajo del de Bóveda
         if st.button("❌ Cancelar", type="secondary", use_container_width=True):
             del st.session_state.item_a_guardar
             st.rerun()
