@@ -305,7 +305,6 @@ def mostrar_popup_exito():
     st.markdown(f"### 📦 {articulo}")
     
     df_actual_art = conn.query("SELECT * FROM pesajes_individuales WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
-    # CONSULTA MODIFICADA: Ahora la bóveda se lee completa, sin ignorar lo ya aplicado
     df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
     df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
     
@@ -338,7 +337,6 @@ def mostrar_popup_exito():
     
     st.divider()
     
-    # Aquí cambiamos a 2 columnas para poder apilar los botones en col2
     col1, col2 = st.columns([1, 1])
     
     def avanzar_y_cerrar():
@@ -402,7 +400,6 @@ def mostrar_popup_exito():
                 st.session_state.show_toast = "✅ Trasladado a la Bóveda."
                 st.rerun()
 
-        # Botón de Cancelar situado debajo del de Bóveda
         if st.button("❌ Cancelar", type="secondary", use_container_width=True):
             del st.session_state.item_a_guardar
             st.rerun()
@@ -722,7 +719,6 @@ with tab_visual:
     row_color_alt = False
 
     for cat in ORDEN_CATEGORIAS_OFICIAL:
-        # CONSULTA MODIFICADA: UNION ALL ahora sin bloquear `aplicado_en_corte`
         query_pesajes_raw = '''
             SELECT articulo, resultado_pue 
             FROM (
@@ -810,7 +806,6 @@ No hay diferencias registradas en el stock para esta sucursal.
     if st.button("🔄 ACTUALIZAR STOCK PARA MAÑANA (TODAS LAS CATEGORÍAS)", type="primary", use_container_width=True):
         with conn.session as s:
             for cat_upd in ORDEN_CATEGORIAS_OFICIAL:
-                # CONSULTA MODIFICADA: UNION ALL ahora sin bloquear `aplicado_en_corte`
                 query_pesajes_maestro = """
                     SELECT articulo, SUM(resultado_pue) as total_pesado 
                     FROM (
@@ -834,8 +829,7 @@ No hay diferencias registradas en el stock para esta sucursal.
                                       {"suc": sucursal_in, "art": art_m, "cat": cat_upd, "stk": nueva_base_m})
                 
                 s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
-                # CÓDIGO MODIFICADO: Eliminada la línea que cambiaba aplicado_en_corte a TRUE
-                # s.execute(text("UPDATE pesajes_guardados SET aplicado_en_corte = TRUE WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
+                s.execute(text("DELETE FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
             
             s.commit()
             
@@ -849,7 +843,6 @@ No hay diferencias registradas en el stock para esta sucursal.
         st.markdown(f"### 📂 Categoría: {categoria_activa_stock}")
         productos_dict_stock = productos_por_categoria.get(categoria_activa_stock, {})
 
-        # CONSULTA MODIFICADA: UNION ALL ahora sin bloquear `aplicado_en_corte`
         query_unificada = """
             SELECT articulo, resultado_pue 
             FROM (
