@@ -160,6 +160,7 @@ dicc_inicial = {
     }
 }
 
+# 🚀 OPTIMIZACIÓN: Cargar catálogo UNA SOLA VEZ
 df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
 if df_cat_global.empty:
     with conn.session as s:
@@ -291,7 +292,7 @@ def dialog_reabastecimiento(df_bajos):
     with col1:
         if st.button("🔄 Ir a actualizar existencias", type="primary", use_container_width=True):
             st.session_state.alerta_mostrada = True
-            st.session_state.ir_a_reabasto = True # Bandera para el JS que nos manda a la pestaña 4
+            st.session_state.ir_a_reabasto = True 
             st.rerun()
     with col2:
         if st.button("Cerrar", use_container_width=True):
@@ -452,7 +453,6 @@ def mostrar_popup_exito():
                                      SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
                                   {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
                     s.commit()
-            # Cierra el popup sin avanzar el índice del producto
             del st.session_state.item_a_guardar
             st.session_state.show_toast = f"✅ Pesaje sumado. Puedes pesar más de: {articulo}"
             st.rerun() 
@@ -605,7 +605,6 @@ with tab_calc:
     categoria_actual = orden_categorias[st.session_state.cat_idx]
     ubicacion_actual = orden_ubicaciones[st.session_state.ubi_idx]
     
-    df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h") 
     df_cat_filtrado = df_cat_global[df_cat_global['categoria'] == categoria_actual]
     
     opciones = []
@@ -805,6 +804,17 @@ with tab_visual:
     st.subheader("🖼️ Reporte Visual de Insumos")
     fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
     
+    # 🚀 OPTIMIZACIÓN: Cargar TODOS los pesajes y stocks de la sucursal de una sola vez
+    query_all_pesajes = """
+        SELECT articulo, categoria, resultado_pue, detalle_formula 
+        FROM pesajes_individuales WHERE sucursal = :suc AND detalle_formula NOT LIKE '%[OMITIDO]%'
+        UNION ALL
+        SELECT articulo, categoria, resultado_pue, detalle_formula 
+        FROM pesajes_guardados WHERE sucursal = :suc AND detalle_formula NOT LIKE '%[OMITIDO]%'
+    """
+    df_pesajes_branch = conn.query(query_all_pesajes, params={"suc": sucursal_in}, ttl=0)
+    df_stock_branch = conn.query("SELECT articulo, categoria, stock FROM auditoria_stock WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
+
     html_content = f"""<div style="background-color: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); max-width: 900px; margin: auto;">
 <div style="text-align: center; color: #8b1c31; font-family: 'Georgia', serif;">
 <h1 style="margin: 0; font-size: 32px; font-weight: bold;">Champlitte {sucursal_in.title()}</h1>
@@ -829,15 +839,9 @@ with tab_visual:
     row_color_alt = False
 
     for cat in ORDEN_CATEGORIAS_OFICIAL:
-        query_pesajes_raw = '''
-            SELECT articulo, resultado_pue 
-            FROM (
-                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
-                UNION ALL
-                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
-            ) as combinados
-        '''
-        df_pesajes_raw = conn.query(query_pesajes_raw, params={"suc": sucursal_in, "cat": cat}, ttl=0)
+        # Filtrar localmente en vez de hacer queries
+        df_pesajes_raw = df_pesajes_branch[df_pesajes_branch['categoria'] == cat] if not df_pesajes_branch.empty else pd.DataFrame()
+        df_auditoria = df_stock_branch[df_stock_branch['categoria'] == cat] if not df_stock_branch.empty else pd.DataFrame()
         
         dict_pesajes = {}
         if not df_pesajes_raw.empty:
@@ -848,8 +852,6 @@ with tab_visual:
                 desglose = f"{' + '.join(str_vals)} = {formato_estricto(total)}" if len(valores) > 1 else formato_estricto(total)
                 dict_pesajes[art] = {'total': total, 'desglose': desglose}
                 
-        df_auditoria = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": cat}, ttl=0)
-        
         productos_dict = productos_por_categoria.get(cat, {})
         lista_todos = sorted(list(set(list(productos_dict.keys()) + 
                                       (df_auditoria['articulo'].tolist() if not df_auditoria.empty else []) + 
@@ -953,15 +955,8 @@ No hay diferencias registradas en el stock para esta sucursal.
         st.markdown(f"### 📂 Categoría: {categoria_activa_stock}")
         productos_dict_stock = productos_por_categoria.get(categoria_activa_stock, {})
 
-        query_unificada = """
-            SELECT articulo, resultado_pue 
-            FROM (
-                SELECT articulo, resultado_pue FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
-                UNION ALL
-                SELECT articulo, resultado_pue FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat AND detalle_formula NOT LIKE '%[OMITIDO]%'
-            ) as combinados
-        """
-        df_raw = conn.query(query_unificada, params={"suc": sucursal_in, "cat": categoria_activa_stock}, ttl=0)
+        # Reutilizar el DataFrame optimizado para esta sección también
+        df_raw = df_pesajes_branch[df_pesajes_branch['categoria'] == categoria_activa_stock] if not df_pesajes_branch.empty else pd.DataFrame()
         
         pesajes_data = []
         if not df_raw.empty:
@@ -974,7 +969,7 @@ No hay diferencias registradas en el stock para esta sucursal.
                 
         df_total_pesado = pd.DataFrame(pesajes_data) if pesajes_data else pd.DataFrame(columns=["articulo", "total_pesado", "desglose_pesada"])
 
-        df_auditoria_base = conn.query("SELECT articulo, stock FROM auditoria_stock WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": categoria_activa_stock}, ttl=0)
+        df_auditoria_base = df_stock_branch[df_stock_branch['categoria'] == categoria_activa_stock] if not df_stock_branch.empty else pd.DataFrame()
 
         lista_dict = list(productos_dict_stock.keys())
         lista_audit = df_auditoria_base['articulo'].tolist() if not df_auditoria_base.empty else []
@@ -1036,7 +1031,6 @@ No hay diferencias registradas en el stock para esta sucursal.
         with st.expander(f"📝 Administrar Catálogo: {categoria_activa_stock}", expanded=False):
             st.markdown("Agrega nuevos productos, modifica nombres o cambia el PUE. Al guardar, se aplicará en toda la aplicación sin saltar de pestaña.")
             
-            df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
             df_cat_edit = df_cat_global[df_cat_global['categoria'] == categoria_activa_stock][['articulo', 'pue', 'ubicacion_conteo', 'redondeo']].copy()
             
             if 'ubicacion_conteo' not in df_cat_edit.columns: 
@@ -1098,12 +1092,16 @@ with tab_historial:
     
     cat_filtro = st.selectbox("📂 Filtrar vistas por Categoría:", ["Todas"] + categorias_ordenadas)
     
+    # 🚀 OPTIMIZACIÓN: Solo hacer la consulta global
+    df_actual_branch = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
+    df_guardados_branch = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
+
     if cat_filtro == "Todas":
-        df_actual = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
-        df_guardados = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
+        df_actual = df_actual_branch
+        df_guardados = df_guardados_branch
     else:
-        df_actual = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": cat_filtro}, ttl=0)
-        df_guardados = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat", params={"suc": sucursal_in, "cat": cat_filtro}, ttl=0)
+        df_actual = df_actual_branch[df_actual_branch['categoria'] == cat_filtro] if not df_actual_branch.empty else pd.DataFrame()
+        df_guardados = df_guardados_branch[df_guardados_branch['categoria'] == cat_filtro] if not df_guardados_branch.empty else pd.DataFrame()
 
     df_guardados_rep = df_guardados.copy()
     if not df_guardados_rep.empty: df_guardados_rep['detalle_formula'] = "[GUARDADO] " + df_guardados_rep['detalle_formula'].astype(str)
