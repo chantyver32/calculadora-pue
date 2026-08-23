@@ -283,8 +283,8 @@ if "alerta_mostrada" not in st.session_state:
 @st.dialog("⚠️ Alerta de Reabastecimiento", width="large")
 def dialog_reabastecimiento(df_bajos):
     st.warning(f"Se detectaron {len(df_bajos)} insumos en cero o por debajo del {umbral_porcentaje}%.")
-    st.dataframe(df_bajos[['articulo', 'stock', 'pesaje_actual']].rename(
-        columns={'articulo': 'Insumo', 'stock': 'Base Anterior', 'pesaje_actual': 'Pesaje Actual'}
+    st.dataframe(df_bajos[['articulo', 'categoria', 'stock', 'pesaje_actual']].rename(
+        columns={'articulo': 'Insumo', 'categoria': 'Categoría', 'stock': 'Base Anterior', 'pesaje_actual': 'Pesaje Actual'}
     ), hide_index=True, use_container_width=True)
     
     col1, col2 = st.columns(2)
@@ -299,11 +299,17 @@ def dialog_reabastecimiento(df_bajos):
 
 # Definir la consulta SIEMPRE para que cualquier pestaña la pueda usar
 query_alertas = """
-    SELECT a.articulo, a.stock, a.categoria,
-           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_guardados p WHERE p.articulo = a.articulo AND p.sucursal = a.sucursal), 0) +
-           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_individuales i WHERE i.articulo = a.articulo AND i.sucursal = a.sucursal), 0) as pesaje_actual
-    FROM auditoria_stock a
-    WHERE a.sucursal = :suc
+    WITH todos_los_articulos AS (
+        SELECT articulo, categoria FROM catalogo_productos
+        UNION
+        SELECT articulo, categoria FROM auditoria_stock WHERE sucursal = :suc
+    )
+    SELECT t.articulo, t.categoria,
+           COALESCE(a.stock, 0) as stock,
+           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_guardados p WHERE p.articulo = t.articulo AND p.sucursal = :suc), 0) +
+           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_individuales i WHERE i.articulo = t.articulo AND i.sucursal = :suc), 0) as pesaje_actual
+    FROM todos_los_articulos t
+    LEFT JOIN auditoria_stock a ON a.articulo = t.articulo AND a.sucursal = :suc
 """
 
 if not st.session_state.alerta_mostrada:
@@ -618,13 +624,18 @@ with tab_calc:
     @st.dialog("⚠️ Preconteo Detectado")
     def dialog_preconteo(articulo, total_preconteo):
         st.info(f"El producto **{articulo}** ya cuenta con un preconteo de **{total_preconteo}**.")
-        col1, col2 = st.columns(2)
+        
+        col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("✅ Continuar", use_container_width=True):
+            if st.button("✅ Omitir y Avanzar", use_container_width=True):
                 st.session_state[f"visto_{articulo}"] = True
                 avanzar_flujo()
                 st.rerun()
         with col2:
+            if st.button("➕ Añadir Pesaje", use_container_width=True):
+                st.session_state[f"visto_{articulo}"] = True
+                st.rerun()
+        with col3:
             if st.button("🗑️ Eliminar Preconteo", use_container_width=True):
                 with conn.session as s:
                     s.execute(text("DELETE FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc"), {"art": articulo, "suc": sucursal_in})
@@ -1158,10 +1169,11 @@ with tab_reabasto:
                         for _, row in edited_reabasto.iterrows():
                             if row['nuevo_stock'] > row['pesaje_actual']:
                                 s.execute(text("""
-                                    UPDATE auditoria_stock 
-                                    SET stock = :n_stock, total_real = :n_stock
-                                    WHERE articulo = :art AND sucursal = :suc
-                                """), {"n_stock": row['nuevo_stock'], "art": row['articulo'], "suc": sucursal_in})
+                                    INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia)
+                                    VALUES (:suc, :art, :cat, :n_stock, :n_stock, 0)
+                                    ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                    SET stock = EXCLUDED.stock, total_real = EXCLUDED.total_real, categoria = EXCLUDED.categoria
+                                """), {"n_stock": row['nuevo_stock'], "art": row['articulo'], "cat": row['categoria'], "suc": sucursal_in})
                         s.commit()
                     st.session_state.show_toast = "✅ Stock de reabastecimiento trasladado a tablas de pesaje."
                     st.rerun()
