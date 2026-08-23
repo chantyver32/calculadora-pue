@@ -242,6 +242,10 @@ with st.sidebar:
     st.caption(f"📱WhatsApp: **{numero_wa}**")
 
     st.divider()
+    st.markdown("### 🔔 Alertas de Stock")
+    umbral_porcentaje = st.number_input("Umbral de Reabastecimiento (%)", min_value=0, value=15, step=1)
+
+    st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
     
     with st.form("form_restaurar_boveda"):
@@ -271,6 +275,49 @@ with st.sidebar:
                         s.commit()
                     st.session_state.show_toast = "✅ Base de datos eliminada"
                     st.rerun()
+
+# ------------------ ALERTA GLOBAL DE REABASTECIMIENTO ------------------
+if "alerta_mostrada" not in st.session_state:
+    st.session_state.alerta_mostrada = False
+
+@st.dialog("⚠️ Alerta de Reabastecimiento", width="large")
+def dialog_reabastecimiento(df_bajos):
+    st.warning(f"Se detectaron {len(df_bajos)} insumos en cero o por debajo del {umbral_porcentaje}%.")
+    st.dataframe(df_bajos[['articulo', 'stock', 'pesaje_actual']].rename(
+        columns={'articulo': 'Insumo', 'stock': 'Base Anterior', 'pesaje_actual': 'Pesaje Actual'}
+    ), hide_index=True, use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 Ir a actualizar existencias", type="primary", use_container_width=True):
+            st.session_state.alerta_mostrada = True
+            st.rerun()
+    with col2:
+        if st.button("Cerrar", use_container_width=True):
+            st.session_state.alerta_mostrada = True
+            st.rerun()
+
+if not st.session_state.alerta_mostrada:
+    query_alertas = """
+        SELECT a.articulo, a.stock, a.categoria,
+               COALESCE((SELECT SUM(resultado_pue) FROM pesajes_guardados p WHERE p.articulo = a.articulo AND p.sucursal = a.sucursal), 0) +
+               COALESCE((SELECT SUM(resultado_pue) FROM pesajes_individuales i WHERE i.articulo = a.articulo AND i.sucursal = a.sucursal), 0) as pesaje_actual
+        FROM auditoria_stock a
+        WHERE a.sucursal = :suc
+    """
+    df_alertas = conn.query(query_alertas, params={"suc": sucursal_in}, ttl=0)
+    
+    if not df_alertas.empty:
+        umbral_decimal = umbral_porcentaje / 100.0
+        df_bajos = df_alertas[(df_alertas['pesaje_actual'] <= 0) | (df_alertas['pesaje_actual'] <= (df_alertas['stock'] * umbral_decimal))]
+        
+        if not df_bajos.empty:
+            dialog_reabastecimiento(df_bajos)
+        else:
+            st.session_state.alerta_mostrada = True
+    else:
+        st.session_state.alerta_mostrada = True
+
 
 # ------------------ FUNCIONES AUXILIARES ------------------
 def truncar_dos_decimales(valor):
@@ -492,7 +539,7 @@ def generar_word_tarjetas(df):
     return buffer
 
 # ------------------ 4. INTERFAZ PRINCIPAL ------------------
-tab_calc, tab_visual, tab_historial = st.tabs(["🧮 Pesaje", "🖼️ Esquema Visual", "📋 Reportes"])
+tab_calc, tab_visual, tab_historial, tab_reabasto = st.tabs(["🧮 Pesaje", "🖼️ Esquema Visual", "📋 Reportes", "📦 Reabasto"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA (PESAJE) ---
 with tab_calc:
@@ -564,6 +611,31 @@ with tab_calc:
         c_n1, c_n2 = st.columns([2,1])
         with c_n1: art_sel = st.text_input("Nombre del Nuevo Artículo:", value=None, placeholder="Ej. CAJA PERSONALIZADA")
         with c_n2: pue_final = st.number_input("Asignar Peso Unitario:", value=None, format="%.4f", placeholder="0.0000")
+
+    # ----- POPUP DE PRECONTEO -----
+    @st.dialog("⚠️ Preconteo Detectado")
+    def dialog_preconteo(articulo, total_preconteo):
+        st.info(f"El producto **{articulo}** ya cuenta con un preconteo de **{total_preconteo}**.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Continuar", use_container_width=True):
+                st.session_state[f"visto_{articulo}"] = True
+                avanzar_flujo()
+                st.rerun()
+        with col2:
+            if st.button("🗑️ Eliminar Preconteo", use_container_width=True):
+                with conn.session as s:
+                    s.execute(text("DELETE FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc"), {"art": articulo, "suc": sucursal_in})
+                    s.commit()
+                st.session_state.show_toast = "✅ Preconteo eliminado."
+                st.session_state[f"visto_{articulo}"] = True
+                st.rerun()
+
+    if not nuevo_art and art_sel and not st.session_state.get(f"visto_{art_sel}"):
+        df_prec = conn.query("SELECT resultado_pue FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
+        if not df_prec.empty:
+            dialog_preconteo(art_sel, df_prec['resultado_pue'].sum())
+    # ------------------------------
 
     with st.form(key="form_pesaje", clear_on_submit=True):
         if modo_preconteo:
@@ -1051,6 +1123,57 @@ with tab_historial:
                         st.rerun()
             else: st.info("No hay pre-conteos guardados en la bóveda.")
     else: st.info(f"No hay pesajes registrados para {sucursal_in} en esta categoría.")
+
+# --- TAB 4: REABASTECIMIENTO ---
+with tab_reabasto:
+    st.subheader("📦 Lista Crítica y Reabastecimiento")
+    st.markdown("Actualiza el stock de los productos detectados en nivel bajo. Al guardar, **las cantidades se trasladarán automáticamente a la base de cálculo de los pesajes**.")
+    
+    df_estado_actual = conn.query(query_alertas, params={"suc": sucursal_in}, ttl=0)
+    
+    if not df_estado_actual.empty:
+        umbral_decimal = umbral_porcentaje / 100.0
+        df_criticos = df_estado_actual[(df_estado_actual['pesaje_actual'] <= 0) | (df_estado_actual['pesaje_actual'] <= (df_estado_actual['stock'] * umbral_decimal))].copy()
+        
+        if not df_criticos.empty:
+            df_criticos['nuevo_stock'] = df_criticos['pesaje_actual']
+            
+            edited_reabasto = st.data_editor(
+                df_criticos[['articulo', 'categoria', 'pesaje_actual', 'nuevo_stock']],
+                column_config={
+                    "articulo": "Insumo",
+                    "categoria": "Categoría",
+                    "pesaje_actual": st.column_config.NumberColumn("Stock/Pesaje Actual", disabled=True),
+                    "nuevo_stock": st.column_config.NumberColumn("Llegó Reabastecimiento (Ingresa Cantidad)", required=True)
+                },
+                use_container_width=True, hide_index=True, key="editor_reabasto"
+            )
+            
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("💾 Actualizar Existencias en el Sistema", type="primary", use_container_width=True):
+                    with conn.session as s:
+                        for _, row in edited_reabasto.iterrows():
+                            if row['nuevo_stock'] > row['pesaje_actual']:
+                                s.execute(text("""
+                                    UPDATE auditoria_stock 
+                                    SET stock = :n_stock, total_real = :n_stock
+                                    WHERE articulo = :art AND sucursal = :suc
+                                """), {"n_stock": row['nuevo_stock'], "art": row['articulo'], "suc": sucursal_in})
+                        s.commit()
+                    st.session_state.show_toast = "✅ Stock de reabastecimiento trasladado a tablas de pesaje."
+                    st.rerun()
+            
+            with col_btn2:
+                lista_texto = "%0A".join([f"- {row['articulo']} (Actual: {row['pesaje_actual']})" for _, row in df_criticos.iterrows()])
+                asunto = f"Solicitud Reabastecimiento - {sucursal_in}"
+                st.markdown(f'<a href="mailto:compras@ejemplo.com?subject={asunto}&body=Falta stock de los siguientes insumos:%0A{lista_texto}" class="btn-wa" style="background-color:#1f77b4;">✉️ Generar Correo de Pedido</a>', unsafe_allow_html=True)
+                
+        else:
+            st.success("✅ Todo el inventario se encuentra por encima del nivel crítico.")
+    else:
+        st.info("Aún no hay historial de stock para calcular reabastecimientos.")
+
 
 components.html("""
     <script>
