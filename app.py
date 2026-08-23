@@ -915,7 +915,12 @@ No hay diferencias registradas en el stock para esta sucursal.
     st.write(html_content, unsafe_allow_html=True)
     st.divider()
 
-    if st.button("🔄 ACTUALIZAR STOCK PARA MAÑANA (TODAS LAS CATEGORÍAS)", type="primary", use_container_width=True):
+    # --- INICIO DEL NUEVO CANDADO DE SEGURIDAD ---
+    st.warning("⚠️ ATENCIÓN: Este botón realizará el cierre definitivo del día. Presiónalo ÚNICAMENTE cuando hayas terminado de contar toda la ruta completa (Bóveda + Piso de Venta).")
+    
+    confirmacion_ruta = st.checkbox("✅ Confirmo que ya terminé de contar absolutamente toda la sucursal.")
+
+    if st.button("🔄 ACTUALIZAR STOCK PARA MAÑANA (TODAS LAS CATEGORÍAS)", type="primary", use_container_width=True, disabled=not confirmacion_ruta):
         with conn.session as s:
             for cat_upd in ORDEN_CATEGORIAS_OFICIAL:
                 query_pesajes_maestro = """
@@ -949,6 +954,7 @@ No hay diferencias registradas en el stock para esta sucursal.
             
         st.session_state.show_toast = "✅ ¡Inventario convertido para mañana! (Preconteos conservados 📦)"
         st.rerun()
+    # --- FIN DEL NUEVO CANDADO DE SEGURIDAD ---
 
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
