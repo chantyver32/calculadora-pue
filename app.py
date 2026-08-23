@@ -291,6 +291,7 @@ def dialog_reabastecimiento(df_bajos):
     with col1:
         if st.button("🔄 Ir a actualizar existencias", type="primary", use_container_width=True):
             st.session_state.alerta_mostrada = True
+            st.session_state.ir_a_reabasto = True # Bandera para el JS que nos manda a la pestaña 4
             st.rerun()
     with col2:
         if st.button("Cerrar", use_container_width=True):
@@ -410,8 +411,9 @@ def mostrar_popup_exito():
                     st.session_state.pending_transition = True
         del st.session_state.item_a_guardar
 
+    # ------------- BOTONES DEL REGISTRO -------------
     with col1:
-        if st.button("Continuar", type="primary", use_container_width=True):
+        if st.button("Siguiente Producto", type="primary", use_container_width=True):
             if diferencia_valida:
                 with conn.session as s:
                     s.execute(text("""INSERT INTO pesajes_individuales 
@@ -430,6 +432,29 @@ def mostrar_popup_exito():
                                   {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
                     s.commit()
             avanzar_y_cerrar()
+            st.rerun() 
+            
+        if st.button("➕ Añadir Pesaje", use_container_width=True):
+            if diferencia_valida:
+                with conn.session as s:
+                    s.execute(text("""INSERT INTO pesajes_individuales 
+                                 (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                                 VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df)"""),
+                              {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
+                               "pb": peso_bruto if not modo_preconteo else 0.0, 
+                               "tara": tara if not modo_preconteo else 0.0, 
+                               "pue": pue if not modo_preconteo else 0.0, 
+                               "rp": resultado, "df": formula})
+                    if stock_teorico is not None:
+                        s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
+                                     VALUES (:suc, :art, :cat, :tr, :stk, :dif)
+                                     ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                     SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
+                                  {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                    s.commit()
+            # Cierra el popup sin avanzar el índice del producto
+            del st.session_state.item_a_guardar
+            st.session_state.show_toast = f"✅ Pesaje sumado. Puedes pesar más de: {articulo}"
             st.rerun() 
             
     with col2:
@@ -1188,14 +1213,25 @@ with tab_reabasto:
     else:
         st.info("Aún no hay historial de stock para calcular reabastecimientos.")
 
+# Lógica JavaScript extra para forzar el clic en la pestaña si venimos de la alerta
+extra_js = ""
+if st.session_state.get('ir_a_reabasto', False):
+    extra_js = """
+    setTimeout(() => {
+        const tabs = window.parent.document.querySelectorAll('button[role="tab"], div[data-baseweb="tab"]');
+        if(tabs.length > 3) { tabs[3].click(); }
+    }, 100);
+    """
+    st.session_state.ir_a_reabasto = False
 
-components.html("""
+components.html(f"""
     <script>
     const num_inputs = window.parent.document.querySelectorAll('input[type="number"]');
     num_inputs.forEach(input => input.setAttribute('enterkeyhint', 'done'));
-    setTimeout(() => {
+    setTimeout(() => {{
         const selectores = window.parent.document.querySelectorAll('input[aria-autocomplete="list"], input[role="combobox"]');
         if(selectores.length > 0) selectores[0].focus();
-    }, 600); 
+    }}, 600); 
+    {extra_js}
     </script>
 """, height=0)
