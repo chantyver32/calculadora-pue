@@ -940,12 +940,14 @@ No hay diferencias registradas en el stock para esta sucursal.
                                          SET stock = EXCLUDED.stock"""), 
                                       {"suc": sucursal_in, "art": art_m, "cat": cat_upd, "stk": nueva_base_m})
                 
+                # SOLO BORRAMOS LA SESIÓN INDIVIDUAL DEL DÍA
                 s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
-                s.execute(text("DELETE FROM pesajes_guardados WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
+                
+                # 🛡️ LA BÓVEDA (PRECONTEOS) SE QUEDA INTACTA PARA MAÑANA
             
             s.commit()
             
-        st.session_state.show_toast = "✅ ¡Inventario convertido para mañana en TODAS las categorías!"
+        st.session_state.show_toast = "✅ ¡Inventario convertido para mañana! (Preconteos conservados 📦)"
         st.rerun()
 
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
