@@ -297,14 +297,16 @@ def dialog_reabastecimiento(df_bajos):
             st.session_state.alerta_mostrada = True
             st.rerun()
 
+# Definir la consulta SIEMPRE para que cualquier pestaña la pueda usar
+query_alertas = """
+    SELECT a.articulo, a.stock, a.categoria,
+           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_guardados p WHERE p.articulo = a.articulo AND p.sucursal = a.sucursal), 0) +
+           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_individuales i WHERE i.articulo = a.articulo AND i.sucursal = a.sucursal), 0) as pesaje_actual
+    FROM auditoria_stock a
+    WHERE a.sucursal = :suc
+"""
+
 if not st.session_state.alerta_mostrada:
-    query_alertas = """
-        SELECT a.articulo, a.stock, a.categoria,
-               COALESCE((SELECT SUM(resultado_pue) FROM pesajes_guardados p WHERE p.articulo = a.articulo AND p.sucursal = a.sucursal), 0) +
-               COALESCE((SELECT SUM(resultado_pue) FROM pesajes_individuales i WHERE i.articulo = a.articulo AND i.sucursal = a.sucursal), 0) as pesaje_actual
-        FROM auditoria_stock a
-        WHERE a.sucursal = :suc
-    """
     df_alertas = conn.query(query_alertas, params={"suc": sucursal_in}, ttl=0)
     
     if not df_alertas.empty:
