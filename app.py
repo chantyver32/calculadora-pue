@@ -243,10 +243,6 @@ with st.sidebar:
     st.caption(f"📱WhatsApp: **{numero_wa}**")
 
     st.divider()
-    st.markdown("### 🔔 Alertas de Stock")
-    umbral_porcentaje = st.number_input("Umbral de Reabastecimiento (%)", min_value=0, value=15, step=1)
-
-    st.divider()
     st.markdown("### 💾 Respaldo de Base de Datos")
     
     with st.form("form_restaurar_boveda"):
@@ -276,58 +272,6 @@ with st.sidebar:
                         s.commit()
                     st.session_state.show_toast = "✅ Base de datos eliminada"
                     st.rerun()
-
-# ------------------ ALERTA GLOBAL DE REABASTECIMIENTO ------------------
-if "alerta_mostrada" not in st.session_state:
-    st.session_state.alerta_mostrada = False
-
-@st.dialog("⚠️ Alerta de Reabastecimiento", width="large")
-def dialog_reabastecimiento(df_bajos):
-    st.warning(f"Se detectaron {len(df_bajos)} insumos en cero o por debajo del {umbral_porcentaje}%.")
-    st.dataframe(df_bajos[['articulo', 'categoria', 'stock', 'pesaje_actual']].rename(
-        columns={'articulo': 'Insumo', 'categoria': 'Categoría', 'stock': 'Base Anterior', 'pesaje_actual': 'Pesaje Actual'}
-    ), hide_index=True, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 Ir a actualizar existencias", type="primary", use_container_width=True):
-            st.session_state.alerta_mostrada = True
-            st.session_state.ir_a_reabasto = True 
-            st.rerun()
-    with col2:
-        if st.button("Cerrar", use_container_width=True):
-            st.session_state.alerta_mostrada = True
-            st.rerun()
-
-# Definir la consulta SIEMPRE para que cualquier pestaña la pueda usar
-query_alertas = """
-    WITH todos_los_articulos AS (
-        SELECT articulo, categoria FROM catalogo_productos
-        UNION
-        SELECT articulo, categoria FROM auditoria_stock WHERE sucursal = :suc
-    )
-    SELECT t.articulo, t.categoria,
-           COALESCE(a.stock, 0) as stock,
-           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_guardados p WHERE p.articulo = t.articulo AND p.sucursal = :suc), 0) +
-           COALESCE((SELECT SUM(resultado_pue) FROM pesajes_individuales i WHERE i.articulo = t.articulo AND i.sucursal = :suc), 0) as pesaje_actual
-    FROM todos_los_articulos t
-    LEFT JOIN auditoria_stock a ON a.articulo = t.articulo AND a.sucursal = :suc
-"""
-
-if not st.session_state.alerta_mostrada:
-    df_alertas = conn.query(query_alertas, params={"suc": sucursal_in}, ttl=0)
-    
-    if not df_alertas.empty:
-        umbral_decimal = umbral_porcentaje / 100.0
-        df_bajos = df_alertas[(df_alertas['pesaje_actual'] <= 0) | (df_alertas['pesaje_actual'] <= (df_alertas['stock'] * umbral_decimal))]
-        
-        if not df_bajos.empty:
-            dialog_reabastecimiento(df_bajos)
-        else:
-            st.session_state.alerta_mostrada = True
-    else:
-        st.session_state.alerta_mostrada = True
-
 
 # ------------------ FUNCIONES AUXILIARES ------------------
 def truncar_dos_decimales(valor):
@@ -572,7 +516,7 @@ def generar_word_tarjetas(df):
     return buffer
 
 # ------------------ 4. INTERFAZ PRINCIPAL ------------------
-tab_calc, tab_visual, tab_historial, tab_reabasto = st.tabs(["🧮 Pesaje", "🖼️ Esquema Visual", "📋 Reportes", "📦 Reabasto"])
+tab_calc, tab_visual, tab_historial = st.tabs(["🧮 Pesaje", "🖼️ Esquema Visual", "📋 Reportes"])
 
 # --- TAB 1: REGISTRO Y AUDITORÍA UNIFICADA (PESAJE) ---
 with tab_calc:
@@ -1168,68 +1112,6 @@ with tab_historial:
             else: st.info("No hay pre-conteos guardados en la bóveda.")
     else: st.info(f"No hay pesajes registrados para {sucursal_in} en esta categoría.")
 
-# --- TAB 4: REABASTECIMIENTO ---
-with tab_reabasto:
-    st.subheader("📦 Lista Crítica y Reabastecimiento")
-    st.markdown("Actualiza el stock de los productos detectados en nivel bajo. Al guardar, **las cantidades se trasladarán automáticamente a la base de cálculo de los pesajes**.")
-    
-    df_estado_actual = conn.query(query_alertas, params={"suc": sucursal_in}, ttl=0)
-    
-    if not df_estado_actual.empty:
-        umbral_decimal = umbral_porcentaje / 100.0
-        df_criticos = df_estado_actual[(df_estado_actual['pesaje_actual'] <= 0) | (df_estado_actual['pesaje_actual'] <= (df_estado_actual['stock'] * umbral_decimal))].copy()
-        
-        if not df_criticos.empty:
-            df_criticos['nuevo_stock'] = df_criticos['pesaje_actual']
-            
-            edited_reabasto = st.data_editor(
-                df_criticos[['articulo', 'categoria', 'pesaje_actual', 'nuevo_stock']],
-                column_config={
-                    "articulo": "Insumo",
-                    "categoria": "Categoría",
-                    "pesaje_actual": st.column_config.NumberColumn("Stock/Pesaje Actual", disabled=True),
-                    "nuevo_stock": st.column_config.NumberColumn("Llegó Reabastecimiento (Ingresa Cantidad)", required=True)
-                },
-                use_container_width=True, hide_index=True, key="editor_reabasto"
-            )
-            
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                if st.button("💾 Actualizar Existencias en el Sistema", type="primary", use_container_width=True):
-                    with conn.session as s:
-                        for _, row in edited_reabasto.iterrows():
-                            if row['nuevo_stock'] > row['pesaje_actual']:
-                                s.execute(text("""
-                                    INSERT INTO auditoria_stock (sucursal, articulo, categoria, stock, total_real, diferencia)
-                                    VALUES (:suc, :art, :cat, :n_stock, :n_stock, 0)
-                                    ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                    SET stock = EXCLUDED.stock, total_real = EXCLUDED.total_real, categoria = EXCLUDED.categoria
-                                """), {"n_stock": row['nuevo_stock'], "art": row['articulo'], "cat": row['categoria'], "suc": sucursal_in})
-                        s.commit()
-                    st.session_state.show_toast = "✅ Stock de reabastecimiento trasladado a tablas de pesaje."
-                    st.rerun()
-            
-            with col_btn2:
-                lista_texto = "%0A".join([f"- {row['articulo']} (Actual: {row['pesaje_actual']})" for _, row in df_criticos.iterrows()])
-                asunto = f"Solicitud Reabastecimiento - {sucursal_in}"
-                st.markdown(f'<a href="mailto:compras@ejemplo.com?subject={asunto}&body=Falta stock de los siguientes insumos:%0A{lista_texto}" class="btn-wa" style="background-color:#1f77b4;">✉️ Generar Correo de Pedido</a>', unsafe_allow_html=True)
-                
-        else:
-            st.success("✅ Todo el inventario se encuentra por encima del nivel crítico.")
-    else:
-        st.info("Aún no hay historial de stock para calcular reabastecimientos.")
-
-# Lógica JavaScript extra para forzar el clic en la pestaña si venimos de la alerta
-extra_js = ""
-if st.session_state.get('ir_a_reabasto', False):
-    extra_js = """
-    setTimeout(() => {
-        const tabs = window.parent.document.querySelectorAll('button[role="tab"], div[data-baseweb="tab"]');
-        if(tabs.length > 3) { tabs[3].click(); }
-    }, 100);
-    """
-    st.session_state.ir_a_reabasto = False
-
 components.html(f"""
     <script>
     const num_inputs = window.parent.document.querySelectorAll('input[type="number"]');
@@ -1238,6 +1120,5 @@ components.html(f"""
         const selectores = window.parent.document.querySelectorAll('input[aria-autocomplete="list"], input[role="combobox"]');
         if(selectores.length > 0) selectores[0].focus();
     }}, 600); 
-    {extra_js}
     </script>
 """, height=0)
