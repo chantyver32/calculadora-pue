@@ -15,6 +15,7 @@ from docx.oxml.ns import qn
 import re  
 import os
 import streamlit.components.v1 as components
+import extra_streamlit_components as stx  # <-- NUEVA IMPORTACIÓN PARA COOKIES
 
 # ------------------ 1. CONFIGURACIÓN GENERAL ------------------
 st.set_page_config(page_title="Insumos Champlitte", page_icon="⚖️", layout="wide")
@@ -182,10 +183,22 @@ for c in ORDEN_CATEGORIAS_OFICIAL:
     if c not in productos_por_categoria:
         productos_por_categoria[c] = {}
 
-# ------------------ SISTEMA DE LOGIN ------------------
+# ------------------ SISTEMA DE LOGIN Y COOKIES ------------------
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
+
 def verificar_login():
     if "autenticado" not in st.session_state:
         st.session_state.autenticado = False
+
+    # Verificar si la cookie de sesión existe para hacer login automático
+    if cookie_manager.get(cookie="sesion_activa") == "true":
+        st.session_state.autenticado = True
+        if "usuario_actual" not in st.session_state:
+            st.session_state.usuario_actual = cookie_manager.get(cookie="usuario_guardado") or "Usuario"
 
     if not st.session_state.autenticado:
         st.markdown("<h2 style='text-align: center;'>⚖️ Baja de insumos</h2>", unsafe_allow_html=True)
@@ -205,6 +218,12 @@ def verificar_login():
                     if not df_check.empty:
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
+                        
+                        # Crear la cookie que durará 12 horas (todo el turno)
+                        expiracion = datetime.now() + timedelta(hours=12)
+                        cookie_manager.set("sesion_activa", "true", expires_at=expiracion)
+                        cookie_manager.set("usuario_guardado", usuario_input.strip(), expires_at=expiracion)
+                        
                         st.session_state.show_toast = "✅ ¡Bienvenid@!"
                         st.rerun()
                     else:
@@ -219,9 +238,14 @@ if not verificar_login():
 with st.sidebar:
     st.markdown("### 🏢 Datos de Sesión")
     st.caption(f"👤 Conectado como: **{st.session_state.get('usuario_actual', 'Usuario')}**")
+    
+    # Botón de cerrar sesión actualizado para borrar las cookies
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.autenticado = False
+        cookie_manager.delete("sesion_activa")
+        cookie_manager.delete("usuario_guardado")
         st.rerun()
+        
     st.divider()
     
     datos_sucursales = {
@@ -622,11 +646,9 @@ with tab_calc:
                 st.session_state[f"visto_{articulo}"] = True
                 st.rerun()
 
-    # --- NUEVO CÓDIGO CON CANDADO DE RERUN ---
+    # --- CÓDIGO CON CANDADO DE RERUN (Solución al error del pop-up) ---
     if not nuevo_art and art_sel and ubicacion_actual == "Bodega":
-        # Verificamos si el artículo en memoria es diferente al último que revisó el pop-up
         if st.session_state.get("ultimo_art_revisado") != art_sel:
-            # Actualizamos la memoria para que no vuelva a saltar si cambiamos de pestaña
             st.session_state["ultimo_art_revisado"] = art_sel
             
             if not st.session_state.get(f"visto_{art_sel}"):
@@ -765,7 +787,6 @@ with tab_visual:
     st.subheader("🖼️ Reporte Visual de Insumos")
     fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
     
-    # MODIFICACIÓN APLICADA: Agregamos el origen ('individual' o 'guardado') a la consulta[span_0](start_span)[span_0](end_span)
     query_all_pesajes = """
         SELECT articulo, categoria, resultado_pue, detalle_formula, 'individual' AS origen 
         FROM pesajes_individuales WHERE sucursal = :suc AND detalle_formula NOT LIKE '%[OMITIDO]%'
@@ -811,7 +832,6 @@ with tab_visual:
                 str_vals = [formato_estricto(v) for v in valores]
                 desglose = f"{' + '.join(str_vals)} = {formato_estricto(total)}" if len(valores) > 1 else formato_estricto(total)
                 
-                # MODIFICACIÓN APLICADA: Detectamos si hay al menos un pesaje confirmado (individual) en la sesión actual
                 tiene_ind = any(group['origen'] == 'individual')
                 
                 dict_pesajes[art] = {'total': total, 'desglose': desglose, 'tiene_individuales': tiene_ind}
@@ -838,22 +858,15 @@ with tab_visual:
                 
             cant_a_restar = truncar_dos_decimales(stock_actual - cant_pesada)
             
-            # --- MODIFICACIÓN APLICADA: REGLAS ESTRICTAS DE FILTRADO PARA EL ESQUEMA VISUAL ---
-            
-            # Regla 1: Si no hay diferencia (Omitido en Cero), NO aparece en el esquema.
             if abs(cant_a_restar) < 0.001:
                 continue
             
-            # Regla 2: Si la diferencia está en rojo (sobrante, pesaje mayor al stock), NO aparece.
             if cant_a_restar < 0:
                 continue
                 
-            # Regla 3: Si solo tiene preconteos (sin pesajes en la sesión actual), NO aparece.
             if not tiene_individuales:
                 continue
                 
-            # ----------------------------------------------------------------------------------
-            
             hay_elementos_con_diferencia = True
             stock_actualizado = cant_pesada  
             
