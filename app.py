@@ -160,7 +160,6 @@ dicc_inicial = {
     }
 }
 
-# 🚀 OPTIMIZACIÓN: Cargar catálogo UNA SOLA VEZ
 df_cat_global = conn.query("SELECT * FROM catalogo_productos", ttl="1h")
 if df_cat_global.empty:
     with conn.session as s:
@@ -323,6 +322,7 @@ def mostrar_popup_exito():
     saved_stock = float(df_stock.iloc[0]['stock']) if not df_stock.empty else None
     
     diferencia_valida = True
+    omitir_en_esquema = False
     col_st1, col_st2 = st.columns(2)
     with col_st1:
         stock_teorico = st.number_input("Valor en Sistema (Stock):", value=saved_stock, placeholder="Ingresa y presiona Enter", key=f"modal_stock_{articulo}")
@@ -334,8 +334,9 @@ def mostrar_popup_exito():
             
             if diferencia > 0:
                 diferencia_valida = False
-                st.error("⚠️ Diferencia en rojo. El pesaje será omitido (no se guardará).")
-    
+                st.error("⚠️ Diferencia en rojo (Sobrante detectado).")
+                omitir_en_esquema = st.checkbox("¿Deseas omitir este producto para que no salga en el esquema visual?", value=True)
+
     st.divider()
     
     col1, col2 = st.columns([1, 1])
@@ -359,70 +360,79 @@ def mostrar_popup_exito():
     # ------------- BOTONES DEL REGISTRO -------------
     with col1:
         if st.button("Siguiente Producto", type="primary", use_container_width=True):
-            if diferencia_valida:
-                with conn.session as s:
-                    s.execute(text("""INSERT INTO pesajes_individuales 
-                                 (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
-                                 VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df)"""),
-                              {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
-                               "pb": peso_bruto if not modo_preconteo else 0.0, 
-                               "tara": tara if not modo_preconteo else 0.0, 
-                               "pue": pue if not modo_preconteo else 0.0, 
-                               "rp": resultado, "df": formula})
-                    if stock_teorico is not None:
-                        s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
-                                     VALUES (:suc, :art, :cat, :tr, :stk, :dif)
-                                     ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                     SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
-                                  {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
-                    s.commit()
+            formula_guardar = formula
+            if not diferencia_valida and omitir_en_esquema:
+                formula_guardar = "[OMITIDO] " + formula
+
+            with conn.session as s:
+                s.execute(text("""INSERT INTO pesajes_individuales 
+                             (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                             VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df)"""),
+                          {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
+                           "pb": peso_bruto if not modo_preconteo else 0.0, 
+                           "tara": tara if not modo_preconteo else 0.0, 
+                           "pue": pue if not modo_preconteo else 0.0, 
+                           "rp": resultado, "df": formula_guardar})
+                if stock_teorico is not None:
+                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
+                                 VALUES (:suc, :art, :cat, :tr, :stk, :dif)
+                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                 SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
+                              {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                s.commit()
             avanzar_y_cerrar()
             st.rerun() 
             
         if st.button("➕ Añadir Pesaje", use_container_width=True):
-            if diferencia_valida:
-                with conn.session as s:
-                    s.execute(text("""INSERT INTO pesajes_individuales 
-                                 (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
-                                 VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df)"""),
-                              {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
-                               "pb": peso_bruto if not modo_preconteo else 0.0, 
-                               "tara": tara if not modo_preconteo else 0.0, 
-                               "pue": pue if not modo_preconteo else 0.0, 
-                               "rp": resultado, "df": formula})
-                    if stock_teorico is not None:
-                        s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
-                                     VALUES (:suc, :art, :cat, :tr, :stk, :dif)
-                                     ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                     SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
-                                  {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
-                    s.commit()
+            formula_guardar = formula
+            if not diferencia_valida and omitir_en_esquema:
+                formula_guardar = "[OMITIDO] " + formula
+
+            with conn.session as s:
+                s.execute(text("""INSERT INTO pesajes_individuales 
+                             (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula) 
+                             VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df)"""),
+                          {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
+                           "pb": peso_bruto if not modo_preconteo else 0.0, 
+                           "tara": tara if not modo_preconteo else 0.0, 
+                           "pue": pue if not modo_preconteo else 0.0, 
+                           "rp": resultado, "df": formula_guardar})
+                if stock_teorico is not None:
+                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
+                                 VALUES (:suc, :art, :cat, :tr, :stk, :dif)
+                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                 SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
+                              {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                s.commit()
             del st.session_state.item_a_guardar
             st.session_state.show_toast = f"✅ Pesaje sumado. Puedes pesar más de: {articulo}"
             st.rerun() 
             
     with col2:
-        if diferencia_valida:
-            if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
-                with conn.session as s:
-                    s.execute(text("""INSERT INTO pesajes_guardados 
-                                 (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
-                                 VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df, FALSE)"""),
-                              {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
-                               "pb": peso_bruto if not modo_preconteo else 0.0, 
-                               "tara": tara if not modo_preconteo else 0.0, 
-                               "pue": pue if not modo_preconteo else 0.0, 
-                               "rp": resultado, "df": formula})
-                    if stock_teorico is not None:
-                        s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
-                                     VALUES (:suc, :art, :cat, :tr, :stk, :dif)
-                                     ON CONFLICT (sucursal, articulo) DO UPDATE 
-                                     SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
-                                  {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
-                    s.commit()
-                avanzar_y_cerrar()
-                st.session_state.show_toast = "✅ Trasladado a la Bóveda."
-                st.rerun()
+        if st.button("📥 Enviar a Bóveda", type="secondary", use_container_width=True):
+            formula_guardar = formula
+            if not diferencia_valida and omitir_en_esquema:
+                formula_guardar = "[OMITIDO] " + formula
+
+            with conn.session as s:
+                s.execute(text("""INSERT INTO pesajes_guardados 
+                             (sucursal, fecha_hora, articulo, categoria, peso_bruto, tara, pue, resultado_pue, detalle_formula, aplicado_en_corte) 
+                             VALUES (:suc, :fh, :art, :cat, :pb, :tara, :pue, :rp, :df, FALSE)"""),
+                          {"suc": sucursal, "fh": fecha_mexico, "art": articulo, "cat": categoria, 
+                           "pb": peso_bruto if not modo_preconteo else 0.0, 
+                           "tara": tara if not modo_preconteo else 0.0, 
+                           "pue": pue if not modo_preconteo else 0.0, 
+                           "rp": resultado, "df": formula_guardar})
+                if stock_teorico is not None:
+                    s.execute(text("""INSERT INTO auditoria_stock (sucursal, articulo, categoria, total_real, stock, diferencia) 
+                                 VALUES (:suc, :art, :cat, :tr, :stk, :dif)
+                                 ON CONFLICT (sucursal, articulo) DO UPDATE 
+                                 SET total_real = EXCLUDED.total_real, stock = EXCLUDED.stock, diferencia = EXCLUDED.diferencia, categoria = EXCLUDED.categoria"""), 
+                              {"suc": sucursal, "art": articulo, "cat": categoria, "tr": total_real, "stk": stock_teorico, "dif": diferencia})
+                s.commit()
+            avanzar_y_cerrar()
+            st.session_state.show_toast = "✅ Trasladado a la Bóveda."
+            st.rerun()
 
         if st.button("❌ Cancelar", type="secondary", use_container_width=True):
             del st.session_state.item_a_guardar
@@ -588,7 +598,7 @@ with tab_calc:
         with c_n1: art_sel = st.text_input("Nombre del Nuevo Artículo:", value=None, placeholder="Ej. CAJA PERSONALIZADA")
         with c_n2: pue_final = st.number_input("Asignar Peso Unitario:", value=None, format="%.4f", placeholder="0.0000")
 
-    # ----- POPUP DE PRECONTEO -----
+    # ----- POPUP DE PRECONTEO (SOLO SI UBICACIÓN ES BODEGA) -----
     @st.dialog("⚠️ Preconteo Detectado")
     def dialog_preconteo(articulo, total_preconteo):
         st.info(f"El producto **{articulo}** ya cuenta con un preconteo de **{total_preconteo}**.")
@@ -612,7 +622,7 @@ with tab_calc:
                 st.session_state[f"visto_{articulo}"] = True
                 st.rerun()
 
-    if not nuevo_art and art_sel and not st.session_state.get(f"visto_{art_sel}"):
+    if not nuevo_art and art_sel and ubicacion_actual == "Bodega" and not st.session_state.get(f"visto_{art_sel}"):
         df_prec = conn.query("SELECT resultado_pue FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
         if not df_prec.empty:
             dialog_preconteo(art_sel, df_prec['resultado_pue'].sum())
@@ -748,7 +758,6 @@ with tab_visual:
     st.subheader("🖼️ Reporte Visual de Insumos")
     fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
     
-    # 🚀 OPTIMIZACIÓN: Cargar TODOS los pesajes y stocks de la sucursal de una sola vez
     query_all_pesajes = """
         SELECT articulo, categoria, resultado_pue, detalle_formula 
         FROM pesajes_individuales WHERE sucursal = :suc AND detalle_formula NOT LIKE '%[OMITIDO]%'
@@ -783,7 +792,6 @@ with tab_visual:
     row_color_alt = False
 
     for cat in ORDEN_CATEGORIAS_OFICIAL:
-        # Filtrar localmente en vez de hacer queries
         df_pesajes_raw = df_pesajes_branch[df_pesajes_branch['categoria'] == cat] if not df_pesajes_branch.empty else pd.DataFrame()
         df_auditoria = df_stock_branch[df_stock_branch['categoria'] == cat] if not df_stock_branch.empty else pd.DataFrame()
         
@@ -859,7 +867,6 @@ No hay diferencias registradas en el stock para esta sucursal.
     st.write(html_content, unsafe_allow_html=True)
     st.divider()
 
-    # --- INICIO DEL NUEVO CANDADO DE SEGURIDAD ---
     st.warning("⚠️ ATENCIÓN: Este botón realizará el cierre definitivo del día. Presiónalo ÚNICAMENTE cuando hayas terminado de contar toda la ruta completa (Bóveda + Piso de Venta).")
     
     confirmacion_ruta = st.checkbox("✅ Confirmo que ya terminé de contar absolutamente toda la sucursal.")
@@ -889,16 +896,11 @@ No hay diferencias registradas en el stock para esta sucursal.
                                          SET stock = EXCLUDED.stock"""), 
                                       {"suc": sucursal_in, "art": art_m, "cat": cat_upd, "stk": nueva_base_m})
                 
-                # SOLO BORRAMOS LA SESIÓN INDIVIDUAL DEL DÍA
                 s.execute(text("DELETE FROM pesajes_individuales WHERE sucursal = :suc AND categoria = :cat"), {"suc": sucursal_in, "cat": cat_upd})
-                
-                # 🛡️ LA BÓVEDA (PRECONTEOS) SE QUEDA INTACTA PARA MAÑANA
-            
             s.commit()
             
         st.session_state.show_toast = "✅ ¡Inventario convertido para mañana! (Preconteos conservados 📦)"
         st.rerun()
-    # --- FIN DEL NUEVO CANDADO DE SEGURIDAD ---
 
     st.subheader("📦 Control de Stock Real e Inventario Dinámico")
     st.markdown("Edita directamente la columna **Cantidad Anterior** para calibrar tu base. El sistema restará en automático sumando la sesión normal y la Bóveda.")
@@ -907,7 +909,6 @@ No hay diferencias registradas en el stock para esta sucursal.
         st.markdown(f"### 📂 Categoría: {categoria_activa_stock}")
         productos_dict_stock = productos_por_categoria.get(categoria_activa_stock, {})
 
-        # Reutilizar el DataFrame optimizado para esta sección también
         df_raw = df_pesajes_branch[df_pesajes_branch['categoria'] == categoria_activa_stock] if not df_pesajes_branch.empty else pd.DataFrame()
         
         pesajes_data = []
@@ -1044,7 +1045,6 @@ with tab_historial:
     
     cat_filtro = st.selectbox("📂 Filtrar vistas por Categoría:", ["Todas"] + categorias_ordenadas)
     
-    # 🚀 OPTIMIZACIÓN: Solo hacer la consulta global
     df_actual_branch = conn.query("SELECT * FROM pesajes_individuales WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
     df_guardados_branch = conn.query("SELECT * FROM pesajes_guardados WHERE sucursal = :suc", params={"suc": sucursal_in}, ttl=0)
 
