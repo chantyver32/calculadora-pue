@@ -758,11 +758,12 @@ with tab_visual:
     st.subheader("🖼️ Reporte Visual de Insumos")
     fecha_str = datetime.now(zona_mx).strftime("%d/%m/%Y - %H:%M")
     
+    # MODIFICACIÓN APLICADA: Agregamos el origen ('individual' o 'guardado') a la consulta[span_0](start_span)[span_0](end_span)
     query_all_pesajes = """
-        SELECT articulo, categoria, resultado_pue, detalle_formula 
+        SELECT articulo, categoria, resultado_pue, detalle_formula, 'individual' AS origen 
         FROM pesajes_individuales WHERE sucursal = :suc AND detalle_formula NOT LIKE '%[OMITIDO]%'
         UNION ALL
-        SELECT articulo, categoria, resultado_pue, detalle_formula 
+        SELECT articulo, categoria, resultado_pue, detalle_formula, 'guardado' AS origen 
         FROM pesajes_guardados WHERE sucursal = :suc AND detalle_formula NOT LIKE '%[OMITIDO]%'
     """
     df_pesajes_branch = conn.query(query_all_pesajes, params={"suc": sucursal_in}, ttl=0)
@@ -802,7 +803,11 @@ with tab_visual:
                 total = truncar_dos_decimales(sum(valores))
                 str_vals = [formato_estricto(v) for v in valores]
                 desglose = f"{' + '.join(str_vals)} = {formato_estricto(total)}" if len(valores) > 1 else formato_estricto(total)
-                dict_pesajes[art] = {'total': total, 'desglose': desglose}
+                
+                # MODIFICACIÓN APLICADA: Detectamos si hay al menos un pesaje confirmado (individual) en la sesión actual
+                tiene_ind = any(group['origen'] == 'individual')
+                
+                dict_pesajes[art] = {'total': total, 'desglose': desglose, 'tiene_individuales': tiene_ind}
                 
         productos_dict = productos_por_categoria.get(cat, {})
         lista_todos = sorted(list(set(list(productos_dict.keys()) + 
@@ -818,14 +823,29 @@ with tab_visual:
             if tiene_pesaje:
                 cant_pesada = dict_pesajes[art]['total']
                 str_pesada = dict_pesajes[art]['desglose']
+                tiene_individuales = dict_pesajes[art]['tiene_individuales']
             else:
                 cant_pesada = stock_actual 
                 str_pesada = formato_estricto(cant_pesada)
+                tiene_individuales = False
                 
             cant_a_restar = truncar_dos_decimales(stock_actual - cant_pesada)
             
+            # --- MODIFICACIÓN APLICADA: REGLAS ESTRICTAS DE FILTRADO PARA EL ESQUEMA VISUAL ---
+            
+            # Regla 1: Si no hay diferencia (Omitido en Cero), NO aparece en el esquema.
             if abs(cant_a_restar) < 0.001:
                 continue
+            
+            # Regla 2: Si la diferencia está en rojo (sobrante, pesaje mayor al stock), NO aparece.
+            if cant_a_restar < 0:
+                continue
+                
+            # Regla 3: Si solo tiene preconteos (sin pesajes en la sesión actual), NO aparece.
+            if not tiene_individuales:
+                continue
+                
+            # ----------------------------------------------------------------------------------
             
             hay_elementos_con_diferencia = True
             stock_actualizado = cant_pesada  
@@ -855,7 +875,7 @@ with tab_visual:
     if not hay_elementos_con_diferencia:
         html_content += """<tr>
 <td colspan="5" style="padding: 20px; text-align: center; color: #666; font-style: italic;">
-No hay diferencias registradas en el stock para esta sucursal.
+No hay bajas confirmadas en el stock para esta sucursal.
 </td>
 </tr>"""
 
