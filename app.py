@@ -622,10 +622,17 @@ with tab_calc:
                 st.session_state[f"visto_{articulo}"] = True
                 st.rerun()
 
-    if not nuevo_art and art_sel and ubicacion_actual == "Bodega" and not st.session_state.get(f"visto_{art_sel}"):
-        df_prec = conn.query("SELECT resultado_pue FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
-        if not df_prec.empty:
-            dialog_preconteo(art_sel, df_prec['resultado_pue'].sum())
+    # --- NUEVO CÓDIGO CON CANDADO DE RERUN ---
+    if not nuevo_art and art_sel and ubicacion_actual == "Bodega":
+        # Verificamos si el artículo en memoria es diferente al último que revisó el pop-up
+        if st.session_state.get("ultimo_art_revisado") != art_sel:
+            # Actualizamos la memoria para que no vuelva a saltar si cambiamos de pestaña
+            st.session_state["ultimo_art_revisado"] = art_sel
+            
+            if not st.session_state.get(f"visto_{art_sel}"):
+                df_prec = conn.query("SELECT resultado_pue FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
+                if not df_prec.empty:
+                    dialog_preconteo(art_sel, df_prec['resultado_pue'].sum())
     # ------------------------------
 
     with st.form(key="form_pesaje", clear_on_submit=True):
