@@ -15,7 +15,7 @@ from docx.oxml.ns import qn
 import re  
 import os
 import streamlit.components.v1 as components
-import extra_streamlit_components as stx  # <-- NUEVA IMPORTACIÓN PARA COOKIES
+import extra_streamlit_components as stx  
 
 # ------------------ 1. CONFIGURACIÓN GENERAL ------------------
 st.set_page_config(page_title="Insumos Champlitte", page_icon="⚖️", layout="wide")
@@ -215,10 +215,10 @@ def verificar_login():
                         st.session_state.autenticado = True
                         st.session_state.usuario_actual = usuario_input.strip()
                         
-                        # Crear la cookie que durará 12 horas (todo el turno)
+                        # Crear la cookie que durará 12 horas (todo el turno) y agregando el key único
                         expiracion = datetime.now() + timedelta(hours=12)
-                        cookie_manager.set("sesion_activa", "true", expires_at=expiracion)
-                        cookie_manager.set("usuario_guardado", usuario_input.strip(), expires_at=expiracion)
+                        cookie_manager.set("sesion_activa", "true", expires_at=expiracion, key="set_sesion_activa")
+                        cookie_manager.set("usuario_guardado", usuario_input.strip(), expires_at=expiracion, key="set_usuario_guardado")
                         
                         st.session_state.show_toast = "✅ ¡Bienvenid@!"
                         st.rerun()
@@ -235,11 +235,11 @@ with st.sidebar:
     st.markdown("### 🏢 Datos de Sesión")
     st.caption(f"👤 Conectado como: **{st.session_state.get('usuario_actual', 'Usuario')}**")
     
-    # Botón de cerrar sesión actualizado para borrar las cookies
+    # Botón de cerrar sesión actualizado para borrar las cookies (agregando key único)
     if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.autenticado = False
-        cookie_manager.delete("sesion_activa")
-        cookie_manager.delete("usuario_guardado")
+        cookie_manager.delete("sesion_activa", key="del_sesion_activa")
+        cookie_manager.delete("usuario_guardado", key="del_usuario_guardado")
         st.rerun()
         
     st.divider()
