@@ -293,18 +293,18 @@ with st.sidebar:
                     st.rerun()
 
 # ------------------ FUNCIONES AUXILIARES ------------------
-def truncar_dos_decimales(valor):
+def truncar_tres_decimales(valor):
     if valor is None: return 0.0
     s = f"{float(valor):.10f}"
     entero, decimal = s.split('.')
-    return float(f"{entero}.{decimal[:2]}")
+    return float(f"{entero}.{decimal[:3]}")
 
 def formato_estricto(valor):
     if pd.isna(valor) or valor is None: return "0"
     s = f"{float(valor):.10f}" 
     entero, decimal = s.split('.')
-    dec_part = decimal[:2]
-    return entero if dec_part == "00" else f"{entero}.{dec_part}"
+    dec_part = decimal[:3]
+    return entero if dec_part == "000" else f"{entero}.{dec_part}"
 
 @st.dialog("✅ Registrado", width="large")
 def mostrar_popup_exito():
@@ -328,8 +328,8 @@ def mostrar_popup_exito():
     df_guardados_art = conn.query("SELECT * FROM pesajes_guardados WHERE articulo = :art AND sucursal = :suc", params={"art": articulo, "suc": sucursal}, ttl=0)
     df_art_combined = pd.concat([df_actual_art, df_guardados_art], ignore_index=True)
     
-    sum_anterior = truncar_dos_decimales(df_art_combined['resultado_pue'].sum())
-    total_real = truncar_dos_decimales(sum_anterior + resultado)
+    sum_anterior = truncar_tres_decimales(df_art_combined['resultado_pue'].sum())
+    total_real = truncar_tres_decimales(sum_anterior + resultado)
     
     sumandos = [formato_estricto(val) for val in df_art_combined['resultado_pue']]
     sumandos.append(formato_estricto(resultado))
@@ -349,7 +349,7 @@ def mostrar_popup_exito():
         
     with col_st2:
         if stock_teorico is not None:
-            diferencia = truncar_dos_decimales(total_real - stock_teorico)
+            diferencia = truncar_tres_decimales(total_real - stock_teorico)
             st.metric("DIFERENCIA", value=" ", delta=formato_estricto(diferencia), delta_color="inverse")
             
             if diferencia > 0:
@@ -653,6 +653,12 @@ with tab_calc:
                     dialog_preconteo(art_sel, df_prec['resultado_pue'].sum())
     # ------------------------------
 
+    # --- CONSULTAR Y MOSTRAR STOCK ACTUAL ANTES DEL FORMULARIO ---
+    if not nuevo_art and art_sel:
+        df_stock_disp = conn.query("SELECT stock FROM auditoria_stock WHERE articulo = :art AND sucursal = :suc", params={"art": art_sel, "suc": sucursal_in}, ttl=0)
+        stock_actual_val = float(df_stock_disp.iloc[0]['stock']) if not df_stock_disp.empty else 0.0
+        st.info(f"📦 **Cantidad en stock actual ({art_sel}):** {formato_estricto(stock_actual_val)}")
+
     with st.form(key="form_pesaje", clear_on_submit=True):
         if modo_preconteo:
             st.info("💡 En este modo se registra la cantidad directa sin cálculos de peso.")
@@ -704,7 +710,7 @@ with tab_calc:
         articulo_valido = art_sel is not None and art_sel.strip() != ""
         if modo_preconteo:
             datos_listos = articulo_valido and cantidad_directa is not None
-            resultado = truncar_dos_decimales(cantidad_directa) if datos_listos else 0
+            resultado = truncar_tres_decimales(cantidad_directa) if datos_listos else 0
         else:
             datos_listos = articulo_valido and peso_bruto is not None and pue_final is not None
             if datos_listos:
@@ -719,7 +725,7 @@ with tab_calc:
                     if red_val.lower() in ['sí', 'si', 'yes', 'true']:
                         calc_val = float(math.floor(calc_val + 0.5))
                 
-                resultado = truncar_dos_decimales(calc_val)
+                resultado = truncar_tres_decimales(calc_val)
                 formula = f"[{ubicacion_actual.upper()}] ({peso_bruto:.3f}PB - {tara_total:.3f}T{' - 0.03Env' if is_tinta else ''}) / {pue_final}PUE"
 
         if datos_listos:
@@ -824,7 +830,7 @@ with tab_visual:
         if not df_pesajes_raw.empty:
             for art, group in df_pesajes_raw.groupby('articulo'):
                 valores = group['resultado_pue'].tolist()
-                total = truncar_dos_decimales(sum(valores))
+                total = truncar_tres_decimales(sum(valores))
                 str_vals = [formato_estricto(v) for v in valores]
                 desglose = f"{' + '.join(str_vals)} = {formato_estricto(total)}" if len(valores) > 1 else formato_estricto(total)
                 
@@ -852,7 +858,7 @@ with tab_visual:
                 str_pesada = formato_estricto(cant_pesada)
                 tiene_individuales = False
                 
-            cant_a_restar = truncar_dos_decimales(stock_actual - cant_pesada)
+            cant_a_restar = truncar_tres_decimales(stock_actual - cant_pesada)
             
             if abs(cant_a_restar) < 0.001:
                 continue
@@ -951,7 +957,7 @@ No hay bajas confirmadas en el stock para esta sucursal.
         if not df_raw.empty:
             for art, group in df_raw.groupby('articulo'):
                 valores = group['resultado_pue'].tolist()
-                total = truncar_dos_decimales(sum(valores))
+                total = truncar_tres_decimales(sum(valores))
                 str_vals = [formato_estricto(v) for v in valores]
                 desglose = f"{' + '.join(str_vals)} = {formato_estricto(total)}" if len(valores) > 1 else formato_estricto(total)
                 pesajes_data.append({"articulo": art, "total_pesado": total, "desglose_pesada": desglose})
